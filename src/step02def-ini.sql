@@ -1,16 +1,16 @@
 ------------------
 -- coverage city (temp table):
 
---DROP TABLE libosmcodes.tmp_coverage_city;
-CREATE TABLE libosmcodes.tmp_coverage_city (
+--DROP TABLE osmc.tmp_coverage_city;
+CREATE TABLE osmc.tmp_coverage_city (
   isolabel_ext text   NOT NULL,
   srid         int    NOT NULL,
   jurisd_base_id int NOT NULL,
   base         int    NOT NULL,
   cover        text[] NOT NULL
 );
---DELETE FROM libosmcodes.tmp_coverage_city;
-INSERT INTO libosmcodes.tmp_coverage_city(isolabel_ext,srid,jurisd_base_id,base,cover) VALUES
+--DELETE FROM osmc.tmp_coverage_city;
+INSERT INTO osmc.tmp_coverage_city(isolabel_ext,srid,jurisd_base_id,base,cover) VALUES
 ('CO-AMA-Leticia',9377,170,32,'{X3T,X3U,X3V,X5,X65,X66,X67,X6C,X6D,X6F,X6G,X6H,X6J,X6K,X6L,X6M,X6S,X6T,X6U,X6V,X6W,X6Y,X7,XJ,XL,XM,XT}'::text[]),
 ('CO-ANT-Itagui',9377,170,32,'{9J8W,9J8X,9J8Z,9JB2,9JB3,9JB8,9JB9,9JBB,9JBC,9JBD,9JBF,9JBG,9JBH,9JC1,9JC4,9JC5}'::text[]),
 ('CO-ANT-Medellin',9377,170,32,'{8UXZ,8UZ,8VP,8VR,9JB,9JC,9JG,9K0,9K1,9K2,9K3,9K4}'::text[]),
@@ -67,7 +67,7 @@ INSERT INTO libosmcodes.tmp_coverage_city(isolabel_ext,srid,jurisd_base_id,base,
 ------------------
 -- Table coverage:
 /*
-CREATE TABLE libosmcodes.coverage (
+CREATE TABLE osmc.coverage (
   id            bigint NOT NULL,
   isolabel_ext  text, -- used only in de-para, replace with 14bit in id
   prefix        text, -- used only in de-para, cache
@@ -78,8 +78,8 @@ CREATE TABLE libosmcodes.coverage (
 );
 */
 -- L0cover, country cover
---DELETE FROM libosmcodes.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) <> 218::bit(10);
-INSERT INTO libosmcodes.coverage(id,bbox,geom,geom_srid4326)
+--DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) <> 218::bit(10);
+INSERT INTO osmc.coverage(id,bbox,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix_l032,32))::text, 37, '0000000000000000000000000000000000000'))::bit(64)::bigint,
@@ -95,7 +95,7 @@ FROM
         '{0,1,2,3,4,5,6,7,8,9,B,C,D,F,G,H,J,K,L,M,N,P,Q,R,S,T,U,V,W,X,Y,Z}'::text[],
         array[0,45,37,38,39,31,32,33,25,26,27,28,29,18,19,20,21,22,23,12,13,14,15,16,17,8,9,10,3,4]
         ) t(prefix_l032,quadrant),
-        LATERAL (SELECT libosmcodes.ij_to_bbox(quadrant%6,quadrant/6,4180000.0,1035500.0,262144.0)) u(bbox),
+        LATERAL (SELECT osmc.ij_to_bbox(quadrant%6,quadrant/6,4180000.0,1035500.0,262144.0)) u(bbox),
         LATERAL (SELECT ST_Transform(geom,9377) FROM optim.vw01full_jurisdiction_geom g WHERE lower(g.isolabel_ext) = lower('CO') AND jurisd_base_id = 170) r(geom_country)
     WHERE quadrant IS NOT NULL AND quadrant > 0
   )
@@ -112,7 +112,7 @@ FROM
         array[20,21,10,11,0,1]
         ) t(prefix_l032,quadrant),
         --LATERAL (SELECT ARRAY[ 353000 + (quadrant%2)*262144, 6028000 + (quadrant/10)*(131072), 353000 + (quadrant%2)*262144+262144, 6028000 + (quadrant/10)*(131072)+131072 ]) u(bbox),
-        LATERAL (SELECT libosmcodes.ij_to_bbox(quadrant%2,quadrant/10,353000.0,6028000.0,262144.0)) u(bbox),
+        LATERAL (SELECT osmc.ij_to_bbox(quadrant%2,quadrant/10,353000.0,6028000.0,262144.0)) u(bbox),
         LATERAL (SELECT ST_Transform(geom,32721) FROM optim.vw01full_jurisdiction_geom g WHERE lower(g.isolabel_ext) = lower('UY') AND jurisd_base_id = 858) r(geom_country)
     WHERE quadrant IS NOT NULL
   )
@@ -126,7 +126,7 @@ FROM
         '{0,1,2,3,4,5,6,7,8,9,B,C,D,F,G,H,J,K,L,M,N,P,Q,R,S,T,U,V,W,X,Y,Z}'::text[],
         array[20,21,22,23,15,16,17,18,19,11,12,13,6,7,8,2]
         ) t(prefix_l032,quadrant),
-        LATERAL (SELECT libosmcodes.ij_to_bbox(quadrant%5,quadrant/5,2715000.0,6727000.0,1048576.0)) u(bbox),
+        LATERAL (SELECT osmc.ij_to_bbox(quadrant%5,quadrant/5,2715000.0,6727000.0,1048576.0)) u(bbox),
         LATERAL (SELECT ST_Transform(geom,952019) FROM optim.vw01full_jurisdiction_geom g WHERE lower(g.isolabel_ext) = lower('BR') AND jurisd_base_id = 76) r(geom_country)
     WHERE quadrant IS NOT NULL AND quadrant <> 2
   )
@@ -138,17 +138,17 @@ FROM
     FROM
     (
       (
-        SELECT x, str_ggeohash_decode_box2(baseh_to_vbit(x,32),(libosmcodes.ij_to_bbox(14%5,14/5,2715000.0,6727000.0,1048576.0))) AS bbox
+        SELECT x, str_ggeohash_decode_box2(baseh_to_vbit(x,32),(osmc.ij_to_bbox(14%5,14/5,2715000.0,6727000.0,1048576.0))) AS bbox
         FROM unnest('{8,9}'::text[]) t(x)
       )
       UNION
       (
-        SELECT x, str_ggeohash_decode_box2(baseh_to_vbit(x,32),(libosmcodes.ij_to_bbox(24%5,24/5,2715000.0,6727000.0,1048576.0))) AS bbox
+        SELECT x, str_ggeohash_decode_box2(baseh_to_vbit(x,32),(osmc.ij_to_bbox(24%5,24/5,2715000.0,6727000.0,1048576.0))) AS bbox
         FROM unnest('{H,G}'::text[]) t(x)
       )
       UNION
       (
-        SELECT x, str_ggeohash_decode_box2(baseh_to_vbit(x,32),(libosmcodes.ij_to_bbox(2%5,2/5,2715000.0,6727000.0,1048576.0))) AS bbox
+        SELECT x, str_ggeohash_decode_box2(baseh_to_vbit(x,32),(osmc.ij_to_bbox(2%5,2/5,2715000.0,6727000.0,1048576.0))) AS bbox
         FROM unnest('{P,R,N,Q}'::text[]) t(x)
       )
     ) s,
@@ -158,8 +158,8 @@ FROM
 ORDER BY 1
 ;
 
---DELETE FROM libosmcodes.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 218::bit(10);
-INSERT INTO libosmcodes.coverage(id,bbox,geom,geom_srid4326)
+--DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 218::bit(10);
+INSERT INTO osmc.coverage(id,bbox,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix_l032,32))::text, 37, '0000000000000000000000000000000000000'))::bit(64)::bigint,
@@ -183,8 +183,8 @@ FROM
 ;
 
 -- de_para cover
---DELETE FROM libosmcodes.coverage WHERE (id::bit(64)<<24)::bit(2) <> 0::bit(2);
-INSERT INTO libosmcodes.coverage(id,isolabel_ext,prefix,index,geom)
+--DELETE FROM osmc.coverage WHERE (id::bit(64)<<24)::bit(2) <> 0::bit(2);
+INSERT INTO osmc.coverage(id,isolabel_ext,prefix,index,geom)
 SELECT ((j_id_bit || l_id_bit || mun_princ || cover_parcial ||  sufix_bits)::bit(64))::bigint , isolabel_ext, cell, ordered_cover, geom
 FROM
 (
@@ -200,7 +200,7 @@ FROM
   (
     SELECT isolabel_ext, srid, jurisd_base_id, cell, ordered_cover, baseh_to_vbit(cell,base) AS cell_bits,
     upper(substr(cell,1,1)) AS l0prefix, base
-    FROM libosmcodes.tmp_coverage_city tc, unnest(CASE WHEN base = 16 THEN '{0,1,2,3,4,5,6,7,8,9,A,B,C,D,E,F}'::text[] ELSE '{0,1,2,3,4,5,6,7,8,9,B,C,D,F,G,H,J,K,L,M,N,P,Q,R,S,T,U,V,W,X,Y,Z}'::text[] END,(ARRAY(SELECT i FROM unnest(cover) t(i) ORDER BY length(i), 1 ASC))) td(ordered_cover,cell)
+    FROM osmc.tmp_coverage_city tc, unnest(CASE WHEN base = 16 THEN '{0,1,2,3,4,5,6,7,8,9,A,B,C,D,E,F}'::text[] ELSE '{0,1,2,3,4,5,6,7,8,9,B,C,D,F,G,H,J,K,L,M,N,P,Q,R,S,T,U,V,W,X,Y,Z}'::text[] END,(ARRAY(SELECT i FROM unnest(cover) t(i) ORDER BY length(i), 1 ASC))) td(ordered_cover,cell)
     WHERE cell IS NOT NULL
   ) p
   LEFT JOIN LATERAL
@@ -223,7 +223,7 @@ FROM
   LEFT JOIN LATERAL
   (
     SELECT (CASE WHEN length(p.cell)>1 THEN str_ggeohash_decode_box2(substring(p.cell_bits from (CASE WHEN p.base = 16 THEN 5 ELSE 6 END)),bbox) ELSE bbox END) AS bbox
-    FROM libosmcodes.coverage
+    FROM osmc.coverage
     WHERE ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper(upper(split_part(p.isolabel_ext,'-',1)))))::int)::bit(10) )
         AND ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2)
         AND
@@ -253,19 +253,19 @@ FROM
 ;
 
 /*
---DROP TABLE libosmcodes.tmp_coverage_cityUY;
-CREATE TABLE libosmcodes.tmp_coverage_cityUY (
+--DROP TABLE osmc.tmp_coverage_cityUY;
+CREATE TABLE osmc.tmp_coverage_cityUY (
   isolabel_ext text   NOT NULL,
   srid         int    NOT NULL,
   jurisd_base_id int NOT NULL,
   cover        text[] NOT NULL,
   cover_replace text[] NOT NULL,
 );
-INSERT INTO libosmcodes.tmp_coverage_cityUY(isolabel_ext,srid,jurisd_base_id,cover) VALUES
+INSERT INTO osmc.tmp_coverage_cityUY(isolabel_ext,srid,jurisd_base_id,cover) VALUES
 ('UY-CO-ColoniaSacramento',32721,858,'{492,487F}'::text[],'{492,492F}'::text[])
 ;
 
-INSERT INTO libosmcodes.coverage(id,isolabel_ext,prefix,index,geom)
+INSERT INTO osmc.coverage(id,isolabel_ext,prefix,index,geom)
 SELECT ((j_id_bit || l_id_bit || mun_princ || cover_parcial ||  sufix_bits)::bit(64))::bigint , isolabel_ext, cell, ordered_cover, geom
 FROM
 (
@@ -281,7 +281,7 @@ FROM
   (
     SELECT isolabel_ext, srid, jurisd_base_id, cell, ordered_cover, baseh_to_vbit(cell,32) AS cell_bits,
     upper(substr(cell,1,1)) AS l0prefix
-    FROM libosmcodes.tmp_coverage_cityUY tc, unnest(cover) td(ordered_cover,cell)
+    FROM osmc.tmp_coverage_cityUY tc, unnest(cover) td(ordered_cover,cell)
     WHERE cell IS NOT NULL
   ) p
   LEFT JOIN LATERAL
@@ -293,7 +293,7 @@ FROM
         WHERE jurisd_base_id=p.jurisd_base_id AND isolevel::int >2
         ORDER BY jurisd_local_id
     ) t
-    
+
   ) q
   ON lower(p.isolabel_ext) = lower(q.isolabel_ext)
   LEFT JOIN LATERAL
@@ -305,7 +305,7 @@ FROM
   LEFT JOIN LATERAL
   (
     SELECT (CASE WHEN length(p.cell)>1 THEN str_ggeohash_decode_box2(substring(p.cell_bits from 6),bbox) ELSE bbox END) AS bbox
-    FROM libosmcodes.coverage
+    FROM osmc.coverage
     WHERE ( (id::bit(64))::bit(10) = ((('{"UY":858}'::jsonb)->(upper(upper(split_part(p.isolabel_ext,'-',1)))))::int)::bit(10) )
         AND ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2)
         AND
@@ -314,7 +314,7 @@ FROM
         )
   ) s
   ON TRUE
- 
+
   ORDER BY q.isolabel_ext, ordered_cover
 ) x
 ;*/

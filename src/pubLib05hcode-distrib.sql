@@ -13,11 +13,14 @@
  * license: CC0
  */
 
+-- DROP SCHEMA IF EXISTS hcode; -- clean lib and data
+CREATE SCHEMA IF NOT EXISTS hcode;
+
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- Check prefix in a set of hcode prefixes:
 
-CREATE or replace FUNCTION hcode_prefixset_parse( p_prefixes text[] ) RETURNS text AS $f$  -- ret a regex.
+CREATE or replace FUNCTION hcode.prefixset_parse( p_prefixes text[] ) RETURNS text AS $f$  -- ret a regex.
  SELECT string_agg(x,'|')
  FROM (
    SELECT *
@@ -26,10 +29,10 @@ CREATE or replace FUNCTION hcode_prefixset_parse( p_prefixes text[] ) RETURNS te
  ) t2
 $f$ LANGUAGE SQL;
 
-CREATE or replace FUNCTION hcode_prefixset_element(
+CREATE or replace FUNCTION hcode.prefixset_element(
  p_check text,     -- hcode to be checked (if its prefix is in prefix set)
  p_prefixes text[] -- the prefix set
-) RETURNS text AS $f$ -- ret the prefix ,or null when not in. Slow, use hcode_prefixset_element(text,text).
+) RETURNS text AS $f$ -- ret the prefix ,or null when not in. Slow, use hcode.prefixset_element(text,text).
  SELECT x
  FROM unnest(p_prefixes) t(x)
  WHERE p_check like (x||'%')
@@ -37,25 +40,25 @@ CREATE or replace FUNCTION hcode_prefixset_element(
  LIMIT 1
 $f$ LANGUAGE SQL IMMUTABLE;
 
-CREATE or replace FUNCTION hcode_prefixset_element(
+CREATE or replace FUNCTION hcode.prefixset_element(
  p_check text,           -- hcode to be checked (if its prefix is in prefix set)
- p_prefixeset_regex text -- obtained from prefix set by hcode_prefixset_parse()
-) RETURNS text AS $f$ -- ret the prefix ,or null when not in. Faster than hcode_prefixset_element(text,text[]).
+ p_prefixeset_regex text -- obtained from prefix set by hcode.prefixset_parse()
+) RETURNS text AS $f$ -- ret the prefix ,or null when not in. Faster than hcode.prefixset_element(text,text[]).
  SELECT (regexp_match(p_check, p_prefixeset_regex))[1]
 $f$ LANGUAGE SQL IMMUTABLE;
 
-CREATE or replace FUNCTION hcode_prefixset_isin(
+CREATE or replace FUNCTION hcode.prefixset_isin(
   p_check text,           -- hcode to be checked (if its prefix is in prefix set)
-  p_prefixeset_regex text -- obtained from prefix set by hcode_prefixset_parse()
+  p_prefixeset_regex text -- obtained from prefix set by hcode.prefixset_parse()
 ) RETURNS boolean AS $wrap$
   SELECT p_check ~ p_prefixeset_regex;
 $wrap$ LANGUAGE SQL IMMUTABLE;
 
-CREATE or replace FUNCTION hcode_prefixset_element_slower(
+CREATE or replace FUNCTION hcode.prefixset_element_slower(
   p_check text,     -- hcode to be checked (if its prefix is in prefix set)
   p_prefixes text[] -- the prefix set
 ) RETURNS text AS $wrap$ -- obly to show how to use, and use in ASSERTs and benchmarks.
-  SELECT hcode_prefixset_element( p_check, hcode_prefixset_parse(p_prefixes) )
+  SELECT hcode.prefixset_element( p_check, hcode.prefixset_parse(p_prefixes) )
 $wrap$ LANGUAGE SQL IMMUTABLE;
 
 -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -139,7 +142,7 @@ $f$ LANGUAGE PLpgSQL IMMUTABLE;
 -- -- -- -- -- -- -- -- -- -- -- -- --
 -- Distribution analytics-functions:
 
-CREATE or replace FUNCTION hcode_distribution_kpis(p_j jsonB) RETURNS jsonB AS $f$
+CREATE or replace FUNCTION hcode.distribution_kpis(p_j jsonB) RETURNS jsonB AS $f$
   -- Key Performance Indicators (KPIs) for distribution analysis
   SELECT jsonb_build_object(
     'keys_n',  MAX( jsonb_object_length(p_j) ), --constant, number of keys
@@ -158,7 +161,7 @@ $f$ LANGUAGE SQL;
 -- -- -- -- -- -- -- -- -- -- -- -- --
 -- Distribution analytics-report functions:
 
-CREATE or replace FUNCTION hcode_distribution_format(
+CREATE or replace FUNCTION hcode.distribution_format(
   p_j jsonB,
   p_perc boolean DEFAULT true,
   p_glink text DEFAULT '', -- ex. http://git.AddressForAll.org/out-BR2021-A4A/blob/main/data/SP/RibeiraoPreto/_pk058/via_
@@ -178,7 +181,7 @@ $f$ LANGUAGE SQL;
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- Distribution analytic-rebuild functions:
 
-CREATE or replace FUNCTION hcode_distribution_reduce_pre_raw(
+CREATE or replace FUNCTION hcode.distribution_reduce_pre_raw(
   p_j jsonB,
   p_left_erode int DEFAULT 1,
   p_size_min int DEFAULT 1,
@@ -222,7 +225,7 @@ $f$ LANGUAGE SQL IMMUTABLE;
 --   3. develop heuristic for geohash_distribution_reduce() RETURNS jsonB, for n-key reduction.
 
 
-CREATE or replace FUNCTION hcode_distribution_reduce_recursive_raw(
+CREATE or replace FUNCTION hcode.distribution_reduce_recursive_raw(
   p_j             jsonB,             -- 1. input pairs {$hcode:$n_items}
   p_left_erode    int DEFAULT 1,     -- 2. number of charcters to drop from left to right
   p_size_min      int DEFAULT 1,     -- 3. minimal size of hcode
@@ -239,7 +242,7 @@ CREATE or replace FUNCTION hcode_distribution_reduce_recursive_raw(
    IF  COALESCE(p_heuristic,0)=0 OR ctrl_recursions>50 THEN --  OR p_heuristic>3
       RETURN QUERY
         SELECT * FROM
-        hcode_distribution_reduce_pre_raw( p_j, p_left_erode, p_size_min, p_threshold, p_threshold_sum );
+        hcode.distribution_reduce_pre_raw( p_j, p_left_erode, p_size_min, p_threshold, p_threshold_sum );
 
    ELSE
       lst_pre := format(
@@ -268,7 +271,7 @@ CREATE or replace FUNCTION hcode_distribution_reduce_recursive_raw(
       );
 
       RETURN QUERY EXECUTE format($$
-          WITH t AS ( SELECT * FROM hcode_distribution_reduce_pre_raw(%1$s) )
+          WITH t AS ( SELECT * FROM hcode.distribution_reduce_pre_raw(%1$s) )
 
             SELECT hcode,
                    SUM(n_items)::int AS n_items,
@@ -285,7 +288,7 @@ CREATE or replace FUNCTION hcode_distribution_reduce_recursive_raw(
 
               -- Erode more (but can fail with no p_threshold_sum backtrack) and joins with accepted rows:
               SELECT *
-              FROM hcode_distribution_reduce_recursive_raw(
+              FROM hcode.distribution_reduce_recursive_raw(
                 ( SELECT jsonb_object_agg(hcode,n_items) FROM t WHERE t.j IS NULL AND n_items<%5$s ),
                 %2$s, %3$s, (%4$s+1)::smallint
               )
@@ -294,7 +297,7 @@ CREATE or replace FUNCTION hcode_distribution_reduce_recursive_raw(
 
               -- Backtracking non-accepted rows:
         	    SELECT q.* FROM t,
-        	     LATERAL (   SELECT * FROM hcode_distribution_reduce_recursive_raw( t.j, %2$s, %3$s, (%4$s+1)::smallint )   ) q
+        	     LATERAL (   SELECT * FROM hcode.distribution_reduce_recursive_raw( t.j, %2$s, %3$s, (%4$s+1)::smallint )   ) q
         	    WHERE t.j IS NOT NULL
             ) t2
             GROUP BY hcode ORDER BY hcode
@@ -308,22 +311,22 @@ CREATE or replace FUNCTION hcode_distribution_reduce_recursive_raw(
       END IF;
 END;
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
--- e.g. BeloHorizonte:   hcode_distribution_reduce_recursive_raw(geocode_distribution_generate('tmp_lixo2',7), 1, 2, 750, 8000, 3) 
+-- e.g. BeloHorizonte:   hcode.distribution_reduce_recursive_raw(geocode_distribution_generate('tmp_lixo2',7), 1, 2, 750, 8000, 3)
 -- e.g. IBGE grid for QGIS:
 --  SELECT hcode as gid, hcode || ' ' || n_items AS name, ST_GeomFromGeoHash(replace(hcode,'','')) AS geom
---  FROM hcode_distribution_reduce_recursive_raw(geocode_distribution_generate('grade_id04_pts',true), 2, 1, 500, 5000, 2);
+--  FROM hcode.distribution_reduce_recursive_raw(geocode_distribution_generate('grade_id04_pts',true), 2, 1, 500, 5000, 2);
 
-CREATE FUNCTION hcode_distribution_reduce_recursive_raw(
+CREATE FUNCTION hcode.distribution_reduce_recursive_raw(
   p_j              jsonB,              -- 1. input pairs {$hcode:$n_items}
   p_left_erode     int DEFAULT 1,      -- 2. number of charcters to drop from left to right
   p_size_min       int DEFAULT 1,      -- 3. minimal size of hcode
   hcode_parameters jsonb DEFAULT NULL, -- 4. hcode_distribution_parameters
   ctrl_recursions  smallint DEFAULT 1  -- 5. recursion counter
 ) RETURNS TABLE (hcode text, n_items int, mdn_items int, n_keys int, j jsonB) AS $wrap$
-   SELECT hcode_distribution_reduce_recursive_raw($1, $2, $3, (hcode_parameters->'p_threshold')::int, (hcode_parameters->'p_threshold_sum')::int, (hcode_parameters->'p_heuristic')::int, $5)
+   SELECT hcode.distribution_reduce_recursive_raw($1, $2, $3, (hcode_parameters->'p_threshold')::int, (hcode_parameters->'p_threshold_sum')::int, (hcode_parameters->'p_heuristic')::int, $5)
 $wrap$ LANGUAGE SQL;
 
-CREATE or replace FUNCTION hcode_distribution_reduce(
+CREATE or replace FUNCTION hcode.distribution_reduce(
   p_j             jsonB,             -- 1. input pairs {$hcode:$n_items}
   p_left_erode    int DEFAULT 1,     -- 2. number of charcters to drop from left to right
   p_size_min      int DEFAULT 1,     -- 3. minimal size of hcode
@@ -332,27 +335,27 @@ CREATE or replace FUNCTION hcode_distribution_reduce(
   p_heuristic     int DEFAULT 1      -- 6. algorithm options 1-6, zero is no recursion.
 )  RETURNS jsonB AS $wrap$
   SELECT jsonb_object_agg(hcode, n_items)
-  FROM hcode_distribution_reduce_recursive_raw($1,$2,$3,$4,$5,$6)
+  FROM hcode.distribution_reduce_recursive_raw($1,$2,$3,$4,$5,$6)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 
-CREATE or replace FUNCTION hcode_distribution_reduce(
+CREATE or replace FUNCTION hcode.distribution_reduce(
   p_j              jsonB,             -- 1. input pairs {$hcode:$n_items}
   p_left_erode     int DEFAULT 1,     -- 2. number of charcters to drop from left to right
   p_size_min       int DEFAULT 1,     -- 3. minimal size of hcode
   hcode_parameters jsonb DEFAULT NULL -- 4. hcode_distribution_parameters
 )  RETURNS jsonB AS $wrap$
   SELECT jsonb_object_agg(hcode, n_items)
-  FROM hcode_distribution_reduce_recursive_raw($1,$2,$3,(hcode_parameters->'p_threshold')::int, (hcode_parameters->'p_threshold_sum')::int, (hcode_parameters->'p_heuristic')::int)
+  FROM hcode.distribution_reduce_recursive_raw($1,$2,$3,(hcode_parameters->'p_threshold')::int, (hcode_parameters->'p_threshold_sum')::int, (hcode_parameters->'p_heuristic')::int)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 
 -- Função em teste, buscam reduzir em até 10 geohashes
 
 --Exemplo:
---SELECT * FROM hcode_signature_reduce(geocode_distribution_generate('grade_id04_pts',true), null, 2, .7,1);
---SELECT * FROM hcode_signature_reduce_recursive_raw(geocode_distribution_generate('grade_id04_pts',true), null, 2, .7,1);
+--SELECT * FROM hcode.signature_reduce(geocode_distribution_generate('grade_id04_pts',true), null, 2, .7,1);
+--SELECT * FROM hcode.signature_reduce_recursive_raw(geocode_distribution_generate('grade_id04_pts',true), null, 2, .7,1);
 
 
-CREATE or replace FUNCTION hcode_signature_reduce_pre_raw(
+CREATE or replace FUNCTION hcode.signature_reduce_pre_raw(
   p_j jsonB,
   p_left_erode int DEFAULT 1,
   p_size_min int DEFAULT 1,
@@ -388,7 +391,7 @@ preproc AS (
 $f$ LANGUAGE SQL IMMUTABLE;
 
 
-CREATE or replace FUNCTION hcode_signature_reduce_recursive_raw(
+CREATE or replace FUNCTION hcode.signature_reduce_recursive_raw(
   p_j jsonB,
   p_left_erode int DEFAULT 1,
   p_size_min int DEFAULT 1,
@@ -408,7 +411,7 @@ CREATE or replace FUNCTION hcode_signature_reduce_recursive_raw(
    IF  COALESCE(p_heuristic,0)=0 OR ctrl_recursions>4 OR len <= 10 THEN
       RETURN QUERY
         SELECT * FROM
-        hcode_signature_reduce_pre_raw( p_j, ctrl_recursions::int, p_size_min, p_percentile );
+        hcode.signature_reduce_pre_raw( p_j, ctrl_recursions::int, p_size_min, p_percentile );
    ELSE
       lst_pre := format(
           '%L::jsonB, %s, %s, %s',
@@ -430,11 +433,11 @@ CREATE or replace FUNCTION hcode_signature_reduce_recursive_raw(
 
       RETURN QUERY EXECUTE format($$
           WITH t AS (
-	      SELECT jsonb_object_agg(hcode,n_items) AS j FROM hcode_signature_reduce_pre_raw( %s )
+	      SELECT jsonb_object_agg(hcode,n_items) AS j FROM hcode.signature_reduce_pre_raw( %s )
 	   )
 
 	    SELECT q.* FROM t,
-	     LATERAL ( SELECT * FROM hcode_signature_reduce_recursive_raw( t.j, %s, %s, (%s+1)::smallint ) ) q
+	     LATERAL ( SELECT * FROM hcode.signature_reduce_recursive_raw( t.j, %s, %s, (%s+1)::smallint ) ) q
          $$,
          lst_pre,
          lst_heuristic,
@@ -446,7 +449,7 @@ END;
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
 
 
-CREATE or replace FUNCTION hcode_signature_reduce(
+CREATE or replace FUNCTION hcode.signature_reduce(
   p_j             jsonB,             -- 1. input pairs {$hcode:$n_items}
   p_left_erode    int  DEFAULT 1,    -- 2. number of charcters to drop from left to right
   p_size_min      int  DEFAULT 1,    -- 3. minimal size of hcode
@@ -454,20 +457,20 @@ CREATE or replace FUNCTION hcode_signature_reduce(
   p_heuristic     int  DEFAULT 1     -- 5. algorithm options 1-3, zero is no recursion.
 ) RETURNS jsonB AS $wrap$
   SELECT jsonb_object_agg(hcode, n_items)
-  FROM hcode_signature_reduce_recursive_raw($1,$2,$3,$4,$5)
+  FROM hcode.signature_reduce_recursive_raw($1,$2,$3,$4,$5)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 
-CREATE or replace FUNCTION hcode_signature_reduce(
+CREATE or replace FUNCTION hcode.signature_reduce(
   p_j             jsonB,              -- 1. input pairs {$hcode:$n_items}
   p_left_erode    int  DEFAULT 1,     -- 2. number of charcters to drop from left to right
   p_size_min      int  DEFAULT 1,     -- 3. minimal size of hcode
   hcode_parameters jsonb DEFAULT NULL -- 4. hcode_signature_parameters
 ) RETURNS jsonB AS $wrap$
   SELECT jsonb_object_agg(hcode, n_items)
-  FROM hcode_signature_reduce_recursive_raw($1,$2,$3,(hcode_parameters->'p_percentile')::real,(hcode_parameters->'p_heuristic')::int)
+  FROM hcode.signature_reduce_recursive_raw($1,$2,$3,(hcode_parameters->'p_percentile')::real,(hcode_parameters->'p_heuristic')::int)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 
-CREATE or replace FUNCTION hcode_distribution_reduce_pre_raw_alt(
+CREATE or replace FUNCTION hcode.distribution_reduce_pre_raw_alt(
     p_j             jsonB,               -- 1. input pairs {$hcode:$n_items}
     p_left_erode    int    DEFAULT 1,    -- 2. number of charcters to drop from left to right
     p_size_min      int    DEFAULT 1,    -- 3. minimal size of hcode
@@ -483,7 +486,7 @@ CREATE or replace FUNCTION hcode_distribution_reduce_pre_raw_alt(
                         n::int n,
                         length(hcode)-(p_size_max-p_size_min) AS size,
                         SUM(n::int) OVER (PARTITION BY substr(hcode,1,length(hcode)-(p_size_max-p_size_min-1)) ORDER BY hcode) AS sum_hcodeb
-                FROM  jsonb_each(p_j) t(hcode,n) 
+                FROM  jsonb_each(p_j) t(hcode,n)
                 WHERE length(hcode)-(p_size_max-p_size_min) >= 0
             ) a
     ),
@@ -521,7 +524,7 @@ CREATE or replace FUNCTION hcode_distribution_reduce_pre_raw_alt(
                 SELECT *
                 FROM b
                 LEFT JOIN e
-                ON      e.hcodea=substr(hcode,1,length(hcode)-(p_size_max-p_size_min  )) 
+                ON      e.hcodea=substr(hcode,1,length(hcode)-(p_size_max-p_size_min  ))
                     AND e.hcodeb=substr(hcode,1,length(hcode)-(p_size_max-p_size_min-1))
             ) f
         GROUP BY 1
@@ -539,7 +542,7 @@ CREATE or replace FUNCTION hcode_distribution_reduce_pre_raw_alt(
     ORDER BY 1
 $f$ LANGUAGE SQL IMMUTABLE;
 
-CREATE or replace FUNCTION hcode_distribution_reduce_recursive_pre_raw_alt(
+CREATE or replace FUNCTION hcode.distribution_reduce_recursive_pre_raw_alt(
     p_j             jsonB,               -- 1. input pairs {$hcode:$n_items}
     p_left_erode    int    DEFAULT 1,    -- 2. number of charcters to drop from left to right
     p_size_min      int    DEFAULT 1,    -- 3. minimal size of hcode
@@ -550,11 +553,11 @@ CREATE or replace FUNCTION hcode_distribution_reduce_recursive_pre_raw_alt(
     IF p_size_min = p_size_max THEN
         RETURN QUERY
             SELECT *
-            FROM hcode_distribution_reduce_pre_raw_alt( p_j, p_left_erode, p_size_min, p_size_max, p_threshold_sum );
+            FROM hcode.distribution_reduce_pre_raw_alt( p_j, p_left_erode, p_size_min, p_size_max, p_threshold_sum );
     ELSE
         RETURN QUERY
             WITH t AS (
-                SELECT * FROM hcode_distribution_reduce_pre_raw_alt(p_j, p_left_erode, p_size_min, p_size_max, p_threshold_sum)
+                SELECT * FROM hcode.distribution_reduce_pre_raw_alt(p_j, p_left_erode, p_size_min, p_size_max, p_threshold_sum)
             )
             SELECT  *
             FROM t
@@ -563,14 +566,14 @@ CREATE or replace FUNCTION hcode_distribution_reduce_recursive_pre_raw_alt(
             UNION ALL
 
             SELECT *
-            FROM hcode_distribution_reduce_recursive_pre_raw_alt( (SELECT jsonb_object_agg(t.hcode,t.n_items) FROM t WHERE t.j IS FALSE), p_left_erode, p_size_min+1, p_size_max, p_threshold_sum )
+            FROM hcode.distribution_reduce_recursive_pre_raw_alt( (SELECT jsonb_object_agg(t.hcode,t.n_items) FROM t WHERE t.j IS FALSE), p_left_erode, p_size_min+1, p_size_max, p_threshold_sum )
             ;
     END IF;
     END;
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
 
 
-CREATE or replace FUNCTION hcode_distribution_reduce_recursive_raw_alt(
+CREATE or replace FUNCTION hcode.distribution_reduce_recursive_raw_alt(
     p_j             jsonB,               -- 1. input pairs {$hcode:$n_items}
     p_left_erode    int    DEFAULT 1,    -- 2. number of charcters to drop from left to right
     p_size_min      int    DEFAULT 1,    -- 3. minimal size of hcode
@@ -596,7 +599,7 @@ CREATE or replace FUNCTION hcode_distribution_reduce_recursive_raw_alt(
                 r.n_keys,
                 r.j,
                 r.jj
-        FROM hcode_distribution_reduce_recursive_pre_raw_alt( p_j, p_left_erode, p_size_min, p_size_max, p_threshold_sum ) r
+        FROM hcode.distribution_reduce_recursive_pre_raw_alt( p_j, p_left_erode, p_size_min, p_size_max, p_threshold_sum ) r
     ) s
     GROUP BY 1;
 $f$ LANGUAGE SQL IMMUTABLE;
