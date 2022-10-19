@@ -448,6 +448,7 @@ CREATE or replace FUNCTION libosmcodes.osmcode_encode(
       AND (id::bit(64))::bit(10) = p_jurisd_base_id::bit(10)
       AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
       AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,p_geom) ELSE TRUE  END
+      ORDER BY length(prefix) DESC
     ) t
     ON TRUE
     -- infos de jurisdiction
@@ -637,7 +638,7 @@ CREATE or replace FUNCTION api.osmcode_decode(
               --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(10))::bit(20) ) = 0::bit(20)
               --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(5) )::bit(20) ) = 0::bit(20)
               -- )
-              (   vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,5)
+              (  vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,5)
               OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,4)
               OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,3)
               OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,2)
@@ -647,6 +648,8 @@ CREATE or replace FUNCTION api.osmcode_decode(
               -- cobertura municipal
               AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
               AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,ST_Centroid(v.geom)) ELSE TRUE END
+              ORDER BY length(prefix) DESC
+              LIMIT 1
             ) t
             ON TRUE
             -- infos de jurisdiction
