@@ -386,19 +386,19 @@ CREATE or replace FUNCTION libosmcodes.osmcode_encode(
         THEN vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
         ELSE vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
         END
-      || (CASE WHEN length(c.code) = length(vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) THEN '' ELSE substr(c.code,length(vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32))+1,length(c.code)) END) ) AS short_code
-      FROM libosmcodes.coverage r
+      || (CASE WHEN length(c.code) = length(prefix32) THEN '' ELSE substr(c.code,length(prefix32)+1,length(c.code)) END) ) AS short_code
+      FROM libosmcodes.coverage r, LATERAL ( SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32)
       WHERE
       -- (   ( (id::bit(64)<<32)::bit(20) #  codebits::bit(20)           ) = 0::bit(20)
       --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(15))::bit(20) ) = 0::bit(20)
       --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(10))::bit(20) ) = 0::bit(20)
       --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(5) )::bit(20) ) = 0::bit(20)
       -- )
-      (   vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,5)
-       OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,4)
-       OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,3)
-       OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,2)
-       OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,1)
+      (   prefix32 = substr(c.code,1,5)
+       OR prefix32 = substr(c.code,1,4)
+       OR prefix32 = substr(c.code,1,3)
+       OR prefix32 = substr(c.code,1,2)
+       OR prefix32 = substr(c.code,1,1)
       )
       AND (id::bit(64))::bit(10) = p_jurisd_base_id::bit(10)
       AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
@@ -585,19 +585,14 @@ CREATE or replace FUNCTION api.osmcode_decode(
                 THEN vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
                 ELSE vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
                 END
-              || (CASE WHEN length(c.code) = length(vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) THEN '' ELSE substr(c.code,length(vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32))+1,length(c.code)) END) ) AS short_code
-              FROM libosmcodes.coverage r
+              || (CASE WHEN length(c.code) = length(prefix32) THEN '' ELSE substr(c.code,length(prefix32)+1,length(c.code)) END) ) AS short_code
+              FROM libosmcodes.coverage r, LATERAL (SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32)
               WHERE
-              -- (   ( (id::bit(64)<<32)::bit(20) #  codebits::bit(20)           ) = 0::bit(20)
-              --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(15))::bit(20) ) = 0::bit(20)
-              --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(10))::bit(20) ) = 0::bit(20)
-              --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(5) )::bit(20) ) = 0::bit(20)
-              -- )
-              (  vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,5)
-              OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,4)
-              OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,3)
-              OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,2)
-              OR vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32) = substr(c.code,1,1)
+              (  prefix32 = substr(c.code,1,5)
+              OR prefix32 = substr(c.code,1,4)
+              OR prefix32 = substr(c.code,1,3)
+              OR prefix32 = substr(c.code,1,2)
+              OR prefix32 = substr(c.code,1,1)
               )
               AND ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper_p_iso))::int)::bit(10) )
               -- cobertura municipal
