@@ -314,52 +314,7 @@ CREATE or replace FUNCTION libosmcodes.osmcode_encode(
         (
           (ST_AsGeoJSONb(ST_Transform_resilient(geom_cell,4326,0.005),8,0,null,
               jsonb_strip_nulls(jsonb_build_object(
-                  'code',
-                      CASE
-                        WHEN p_base = 18
-                        THEN
-                          CASE
-                            -- tr g->F, h->F
-                            WHEN p_jurisd_base_id = 76 AND length(code) > 2
-                            THEN
-                            (
-                              ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
-                                "08": "8", "09": "9", "0A": "A", "0B": "B", "0C": "C", "0D": "D", "0E": "E", "0F": "F",
-                                "10": "F", "11": "F", "12": "j", "13": "k", "14": "l", "15": "m", "16": "n", "17": "p",
-                                "18": "q", "19": "r", "1A": "s", "1B": "t", "1C": "v", "1D": "z"}'::jsonb)->>(substring(code,1,2))
-                            )
-                            -- tr g->E, h->5, j->0
-                            WHEN p_jurisd_base_id = 858 AND length(code) > 2 AND substring(code,1,3) IN ('100','101','102','10J','10N','10P', '12A','12B','12T', '11M','11V','11Z','11C','11D','11E','11F')
-                            THEN
-                            (
-                              ('{"10": "E", "11": "5", "12": "0"}'::jsonb)->>(substring(code,1,2))
-                            )
-                            WHEN p_jurisd_base_id = 858 AND length(code) > 2 AND substring(code,1,3) NOT IN (
-                            '0E0','0E1','0E2','0EN','0EJ','0EP',
-                            '00A','00B','00T',
-                            '05M','05V','05Z','05C','05D','05E','05F'
-
-                            '100','101','102','10J','10N','10P',
-                            '12A','12B','12T',
-                            '11M','11V','11Z','11C','11D','11E','11F'
-                            )
-                            THEN
-                            (
-                              ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
-                                "08": "8", "09": "9", "0A": "A", "0B": "B", "0C": "C", "0D": "D", "0E": "E", "0F": "F"}'::jsonb)->>(substring(code,1,2))
-                            )
-                            WHEN length(code) = 2
-                            THEN
-                            (
-                              ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
-                                "08": "8", "09": "9", "0A": "A", "0B": "B", "0C": "C", "0D": "D", "0E": "E", "0F": "F",
-                                "10": "g", "11": "h", "12": "j", "13": "k", "14": "l", "15": "m", "16": "n", "17": "p",
-                                "18": "q", "19": "r", "1A": "s", "1B": "t", "1C": "v", "1D": "z"}'::jsonb)->>(substring(code,1,2))
-                            )
-                          END || upper(substring(code,3))
-                        ELSE code
-                      END
-                  ,
+                  'code', CASE WHEN p_base = 18 THEN libosmcodes.osmcode_encode_16h1c(code,p_jurisd_base_id) ELSE code END,
                   'short_code', short_code,
                   'area', ST_Area(geom_cell),
                   'side', SQRT(ST_Area(geom_cell)),
