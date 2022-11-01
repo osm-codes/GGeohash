@@ -319,7 +319,11 @@ CREATE or replace FUNCTION libosmcodes.osmcode_encode(
                   'area', ST_Area(geom_cell),
                   'side', SQRT(ST_Area(geom_cell)),
                   'base', base,
-                  'jurisd_local_id', jurisd_local_id
+                  'jurisd_local_id', jurisd_local_id,
+                  'scientic_code', CASE
+                                    WHEN p_base = 32 AND p_jurisd_base_id     IN (76,868) THEN libosmcodes.osmcode_encode_16h1c(vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16,0),p_jurisd_base_id)
+                                    WHEN p_base = 32 AND p_jurisd_base_id NOT IN (76,868) THEN vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16,0)
+                                    ELSE NULL END
                   ))
           )::jsonb) || m.subcells
         )
@@ -505,7 +509,12 @@ CREATE or replace FUNCTION api.osmcode_decode(
                                      WHEN p_base = 18 THEN 'base16h1c'
                                      ELSE                  'base32'
                                 END,
-                        'jurisd_local_id', jurisd_local_id
+                        'jurisd_local_id', jurisd_local_id,
+                        'scientic_code', CASE
+                                          WHEN p_base = 32 AND upper(p_iso)     IN ('BR','UY') THEN libosmcodes.osmcode_encode_16h1c(vbit_to_baseh('000'||codebits,16,0),((('{"BR":76, "UY":858}'::jsonb)->(upper_p_iso))::int))
+                                          WHEN p_base = 32 AND upper(p_iso) NOT IN ('BR','UY') THEN vbit_to_baseh('000'||codebits,16,0)
+                                          ELSE NULL
+                                         END
                         ))
                     )::jsonb) AS gj
             FROM
