@@ -30,7 +30,7 @@ CREATE SCHEMA IF NOT EXISTS ggeohash; -- Geographic application of hcodes and Mo
 -- -- -- -- -- --
 -- Main functions
 
-CREATE or replace FUNCTION ggeohash.encode(  -- to string, old str_ggeohash_encode
+CREATE or replace FUNCTION ggeohash.encode(  -- to string, old ggeohash.encode
    x float,
    y float,
    code_size int default NULL, -- default 9 for base32 and 23 for base4
@@ -92,6 +92,20 @@ COMMENT ON FUNCTION ggeohash.encode(float, float, integer, integer, text, float,
   IS 'Encondes LatLon WGS84 as Generalized Geohash. Algorithm adapted from https://github.com/ppKrauss/node-geohash/blob/master/main.js'
 ;
 
+CREATE or replace FUNCTION ggeohash.encode( -- to string
+   x float,
+   y float,
+   code_size int,
+   code_digit_bits int,
+   code_digits_alphabet text,
+   bbox float[]
+) RETURNS text as $f$
+   SELECT ggeohash.encode($1, $2, $3, $4, $5, bbox[1], bbox[2], bbox[3], bbox[4])
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION ggeohash.encode(float, float, integer, integer, text, float[])
+  IS 'Wrap for ggeohash.encode(float, float, integer, integer, text, float, float, float, float).'
+;
+
 CREATE or replace FUNCTION ggeohash.encode2( -- to JSON
    x float,
    y float,
@@ -150,7 +164,9 @@ BEGIN
  RETURN  jsonb_build_object('code',array_to_string(chars,''), 'box',array[min_x, min_y, max_x, max_y]);
 END
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
-
+COMMENT ON FUNCTION ggeohash.encode2(float, float, integer, integer, text, float, float, float, float)
+  IS 'Encondes LatLon WGS84 as Generalized Geohash. Algorithm adapted from https://github.com/ppKrauss/node-geohash/blob/master/main.js'
+;
 
 CREATE or replace FUNCTION ggeohash.encode2(  -- to JSON
    x float,
@@ -162,6 +178,9 @@ CREATE or replace FUNCTION ggeohash.encode2(  -- to JSON
 ) RETURNS jsonb as $f$
    SELECT ggeohash.encode2($1, $2, $3, $4, $5, bbox[1], bbox[2], bbox[3], bbox[4])
 $f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION ggeohash.encode2(float, float, integer, integer, text, float[])
+  IS 'Wrap for ggeohash.encode2(float, float, integer, integer, text, float, float, float, float).'
+;
 
 CREATE or replace FUNCTION ggeohash.encode3(
    x float,
@@ -170,16 +189,21 @@ CREATE or replace FUNCTION ggeohash.encode3(
    min_y float default -180.,
    max_x float default 90.,
    max_y float default 180.,
-   bit_length int default 40
+   bit_length int default 40,
+   lonlat boolean default false -- false: latLon, true: lonLat
 ) RETURNS varbit as $f$
 DECLARE
  bit_string varbit := b'';
- i int := 0;
+ i   int := 0;
+ j   int := 0;
  mid float;
 BEGIN
+    IF lonlat THEN
+      j := 1;
+    END IF;
  FOR i in 0..(bit_length-1) LOOP
-   IF i % 2 = 0 THEN
-     mid := (max_y + min_y) / 2.0;
+   IF i % 2 = j THEN
+     mid := (max_y + min_y)::float / 2.0;
      IF y > mid THEN
        bit_string := bit_string || B'1';
        min_y := mid;
@@ -188,7 +212,7 @@ BEGIN
        max_y := mid;
      END IF;
    ELSE
-     mid := (max_x + min_x) / 2.0;
+     mid := (max_x + min_x)::float / 2.0;
      IF x > mid THEN
        bit_string := bit_string || B'1';
        min_x := mid;
@@ -201,32 +225,23 @@ BEGIN
  RETURN bit_string;
 END
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
+COMMENT ON FUNCTION ggeohash.encode3(float, float, float, float, float, float, integer, boolean)
+  IS 'Encondes LatLon WGS84 as Generalized Geohash.'
+;
 -- SELECT ggeohash.encode3(4642144.0,1759788.0,4442144,1559788,4704288,1821932,10);
 
-CREATE or replace FUNCTION ggeohash.encode3(  -- to varbit
+CREATE or replace FUNCTION ggeohash.encode3(
    x float,
    y float,
    bbox float[],
-   bit_length int
+   bit_length int,
+   lonlat boolean default false -- false: latLon, true: lonLat
 ) RETURNS varbit as $f$
-   SELECT ggeohash.encode3(x,y,bbox[1],bbox[2],bbox[3],bbox[4],bit_length)
+   SELECT ggeohash.encode3(x,y,bbox[1],bbox[2],bbox[3],bbox[4],bit_length,lonlat)
 $f$ LANGUAGE SQL IMMUTABLE;
-----
-
-CREATE or replace FUNCTION ggeohash.encode( -- to string
-   x float,
-   y float,
-   code_size int,
-   code_digit_bits int,
-   code_digits_alphabet text,
-   bbox float[]
-) RETURNS text as $f$
-   SELECT ggeohash.encode($1, $2, $3, $4, $5, bbox[1], bbox[2], bbox[3], bbox[4])
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.encode(float, float, integer, integer, text, float[])
-  IS 'Wrap for ggeohash.encode(...,float,float,float,float).'
+COMMENT ON FUNCTION ggeohash.encode3(float, float, float[], integer, boolean)
+  IS 'Wrap for ggeohash.encode3(float, float, float, float, float, float, integer, boolean).'
 ;
-
 -- -- --
 
 CREATE or replace FUNCTION ggeohash.decode_box( -- to box array
@@ -289,30 +304,47 @@ COMMENT ON FUNCTION ggeohash.decode_box(text, integer, jsonb, float, float, floa
   IS 'Decodes string of a Generalized Geohash into a bounding Box that matches it. Returns a four-element array: [minlat, minlon, maxlat, maxlon]. Algorithm adapted from https://github.com/ppKrauss/node-geohash/blob/master/main.js'
 ;
 
+CREATE or replace FUNCTION ggeohash.decode_box(
+   code text,                 -- 1
+   code_digit_bits int,       -- 2
+   code_digits_lookup jsonb,  -- 3
+   bbox float[]
+) RETURNS float[] as $wrap$
+  SELECT ggeohash.decode_box($1, $2, $3, bbox[1], bbox[2], bbox[3], bbox[4])
+$wrap$ LANGUAGE sql IMMUTABLE;
+COMMENT ON FUNCTION ggeohash.decode_box(text, integer, jsonb, float[])
+  IS 'Wrap for ggeohash.decode_box(text, integer, jsonb, float, float, float, float).'
+;
+
 -- pode substituir ggeohash.decode_box
-CREATE or replace FUNCTION ggeohash.decode_box2(  -- to box array
-   code varbit,
-   min_x float default -90.,
-   min_y float default -180.,
-   max_x float default 90.,
-   max_y float default 180.
+CREATE or replace FUNCTION ggeohash.decode_box2(
+   code  varbit,
+   min_x  float   default -90.,
+   min_y  float   default -180.,
+   max_x  float   default 90.,
+   max_y  float   default 180.,
+   lonlat boolean default false -- false: latLon, true: lonLat
 ) RETURNS float[] as $f$
 DECLARE
-  mid    float;
-  bit    int;
-  i int;
+  mid float;
+  bit int;
+  i   int;
+  j   int := 0;
 BEGIN
+    IF lonlat THEN
+      j := 1;
+    END IF;
    FOR i IN 0..(bit_length(code)-1) LOOP
       bit = get_bit(code,i);
-      IF i % 2 = 0 THEN
-        mid = (max_y + min_y) / 2;
+      IF i % 2 = j THEN
+        mid = (max_y + min_y)::float / 2.0;
         IF bit = 1 THEN
           min_y := mid;
         ELSE
           max_y := mid;
         END IF;
       ELSE
-        mid = (max_x + min_x) / 2;
+        mid = (max_x + min_x)::float / 2.0;
         IF bit =1 THEN
           min_x = mid;
         ELSE
@@ -323,31 +355,19 @@ BEGIN
    RETURN array[min_x, min_y, max_x, max_y];
 END
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.decode_box2(varbit, float, float, float, float)
+COMMENT ON FUNCTION ggeohash.decode_box2(varbit, float, float, float, float, boolean)
   IS 'Decodes string of a Generalized Geohash into a bounding Box that matches it. Returns a four-element array: [minlat, minlon, maxlat, maxlon]. Algorithm adapted from https://github.com/ppKrauss/node-geohash/blob/master/main.js'
 ;
 
 CREATE or replace FUNCTION ggeohash.decode_box2(
    code varbit,
-   bbox float[]
+   bbox float[],
+   lonlat boolean default false
 ) RETURNS float[] as $wrap$
-  SELECT ggeohash.decode_box2($1, bbox[1], bbox[2], bbox[3], bbox[4])
+  SELECT ggeohash.decode_box2($1, bbox[1], bbox[2], bbox[3], bbox[4],lonlat)
 $wrap$ LANGUAGE sql IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.decode_box2(varbit, float[])
-  IS 'Wrap for ggeohash.decode_box(...,float,float,float,float).'
-;
-
-
-CREATE or replace FUNCTION ggeohash.decode_box(
-   code text,                 -- 1
-   code_digit_bits int,       -- 2
-   code_digits_lookup jsonb,  -- 3
-   bbox float[]
-) RETURNS float[] as $wrap$
-  SELECT ggeohash.decode_box($1, $2, $3, bbox[1], bbox[2], bbox[3], bbox[4])
-$wrap$ LANGUAGE sql IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.decode_box(text, integer, jsonb, float[])
-  IS 'Wrap for ggeohash.decode_box(...,float,float,float,float).'
+COMMENT ON FUNCTION ggeohash.decode_box2(varbit, float[],boolean)
+  IS 'Wrap for ggeohash.decode_box2(varbit, float, float, float, float, boolean).'
 ;
 
 ------------------------------
@@ -365,7 +385,6 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION ggeohash.classic_encode(float,float,int)
   IS 'Encondes LatLon as classic Geohash of Niemeyer 2008.'
 ;
-
 
 CREATE or replace FUNCTION ggeohash.classic_decode(
    code text,
@@ -385,7 +404,6 @@ COMMENT ON FUNCTION ggeohash.classic_decode(text,boolean)
 -- Wrap and helper functions:
 
 -- use pgLIB: FUNCTION str_geouri_decode(uri text) RETURNS float[] as $f$
-
 
 CREATE or replace FUNCTION ggeohash.classic_encode(
   latLon text -- geoURI
