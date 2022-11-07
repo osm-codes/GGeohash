@@ -425,6 +425,40 @@ COMMENT ON FUNCTION ggeohash.classic_encode(float[],int)
   IS 'Wrap for ggeohash.classic_encode() with array input.'
 ;
 
+CREATE or replace FUNCTION ggeohash.classic_cover(
+  p_geom geometry,
+  p_code_size int DEFAULT 5,
+  p_samples int DEFAULT 9000
+) RETURNS text[] as $f$
+	SELECT array_agg( DISTINCT ST_geohash(g,p_code_size) ) AS ghs
+	FROM (
+	   SELECT (ST_DumpPoints(p_geom)).geom AS g
+	   UNION ALL
+	   SELECT ST_GeneratePoints(p_geom, p_samples, 2020)
+	) t
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION ggeohash.classic_cover
+  IS 'Obtain a set of cover-Geohash-cells of the polygon, expressed by codes of fixed length.'
+;
+
+CREATE or replace FUNCTION ggeohash.classic_autocover(
+  p_geom geometry,
+  p_samples int DEFAULT 9000
+) RETURNS text[] as $f$
+  SELECT ggeohash.classic_cover(
+	  p_geom,
+	  case when srid_ok then 1 + CASE WHEN size>45 THEN 1 WHEN size>8 THEN 2 WHEN size>1.4 THEN 3 ELSE 4 END else 6 end ,
+	  p_samples
+      )
+  FROM (SELECT ST_CharactDiam(p_geom), st_srid(p_geom)=4326) t(size,srid_ok)
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION ggeohash.classic_cover
+  IS 'Obtain a set of cover-Geohash-cells of the polygon, expressed by codes of fixed length.'
+;
+
+
+
+
 -------------------------------------
 ----- Using UV normalized coordinates
 
