@@ -354,18 +354,20 @@ CREATE or replace FUNCTION osmc.encode(
           (
             SELECT jsonb_agg(
                 ST_AsGeoJSONb(ST_Transform_resilient(geom,4326,0.005),8,0,null,
-                    jsonb_build_object(
-                        'code', upper(ghs) ,
-                        'code_subcell', substr(ghs,length(code2)+1,length(ghs)) ,
+                    jsonb_strip_nulls(jsonb_build_object(
+                        'code', upper(ghs),
+                        'short_code', short_code,
+                        'code_subcell', substr(ghs,length(code2)+1,length(ghs)),
                         'prefix', code2,
                         'area', ST_Area(geom),
                         'side', SQRT(ST_Area(geom)),
-                        'base', base
-                        )
+                        'base', base,
+                        'jurisd_local_id', ss.jurisd_local_id
+                        ))
                     )::jsonb)
               FROM
              (
-              SELECT geom,
+              SELECT geom, code,
                   CASE WHEN p_base = 18 THEN osmc.encode_16h1c(ghs,p_jurisd_base_id) ELSE ghs END AS ghs,
                   CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END AS code2
                 FROM osmc.ggeohash_GeomsFromVarbit(
@@ -379,6 +381,43 @@ CREATE or replace FUNCTION osmc.encode(
                       CASE WHEN p_grid_size % 2 = 1 THEN TRUE ELSE FALSE END
                       )
              ) xx
+              -- responsável pelo código curto na grade postal das subcélulas
+              LEFT JOIN LATERAL
+              (
+                SELECT isolabel_ext, (isolabel_ext || '~' ||
+                  CASE
+                  WHEN p_base IN (16,17,18)
+                  THEN vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
+                  ELSE vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
+                  END
+                || (CASE WHEN length(xx.code) = length(prefix32) THEN '' ELSE substr(xx.code,length(prefix32)+1,length(xx.code)) END) ) AS short_code
+                FROM osmc.coverage rr, LATERAL ( SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32)
+                WHERE
+                -- (   ( (id::bit(64)<<32)::bit(20) #  codebits::bit(20)           ) = 0::bit(20)
+                --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(15))::bit(20) ) = 0::bit(20)
+                --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(10))::bit(20) ) = 0::bit(20)
+                --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(5) )::bit(20) ) = 0::bit(20)
+                -- )
+                (  prefix32 = substr(xx.code,1,5)
+                OR prefix32 = substr(xx.code,1,4)
+                OR prefix32 = substr(xx.code,1,3)
+                OR prefix32 = substr(xx.code,1,2)
+                OR prefix32 = substr(xx.code,1,1)
+                )
+                AND (id::bit(64))::bit(10) = p_jurisd_base_id::bit(10)
+                AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
+                AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(rr.geom,p_geom) ELSE TRUE  END
+                ORDER BY length(prefix) DESC
+              ) tt
+              ON TRUE
+              -- infos de jurisdiction
+              LEFT JOIN LATERAL
+              (
+                SELECT jurisd_local_id
+                FROM optim.jurisdiction
+                WHERE isolabel_ext = tt.isolabel_ext
+              ) ss
+              ON TRUE
           )
         ELSE '[]'::jsonb
         END AS subcells
