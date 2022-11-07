@@ -349,7 +349,7 @@ CREATE or replace FUNCTION osmc.encode(
     (
       SELECT
         CASE
-        WHEN p_grid_size > 0
+        WHEN p_grid_size > 0 AND SQRT(ST_Area(c.geom_cell)) > 1
         THEN
           (
             SELECT jsonb_agg(
