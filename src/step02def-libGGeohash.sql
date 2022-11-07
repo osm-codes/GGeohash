@@ -443,21 +443,26 @@ COMMENT ON FUNCTION ggeohash.classic_cover
 
 CREATE or replace FUNCTION ggeohash.classic_autocover(
   p_geom geometry,
-  p_samples int DEFAULT 9000
+  p_numcells_max int DEFAULT 31,  -- 31 + reserva para base32.
+  p_samples int DEFAULT 1000
 ) RETURNS text[] as $f$
-  SELECT ggeohash.classic_cover(
+  SELECT CASE
+           WHEN cardinality(cover)>p_numcells_max THEN ggeohash.classic_cover(p_geom, length(cover[1])-1, p_samples) 
+           ELSE cover
+        END
+  FROM (
+    SELECT ggeohash.classic_cover(
 	  p_geom,
-	  case when srid_ok then 1 + CASE WHEN size>45 THEN 1 WHEN size>8 THEN 2 WHEN size>1.4 THEN 3 ELSE 4 END else 6 end ,
+	  case when srid_ok then 1 + CASE WHEN size>45 THEN 1 WHEN size>8 THEN 2 WHEN size>1.4 THEN 3 ELSE 4 END else 5 end ,
 	  p_samples
-      )
-  FROM (SELECT ST_CharactDiam(p_geom), st_srid(p_geom)=4326) t(size,srid_ok)
+      ) AS cover
+    FROM (SELECT ST_CharactDiam(p_geom), st_srid(p_geom)=4326) t1(size,srid_ok)
+  ) t2
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION ggeohash.classic_cover
   IS 'Obtain a set of cover-Geohash-cells of the polygon, expressed by codes of fixed length.'
 ;
-
-
-
+-- SELECT isolabel_ext, ggeohash.classic_autocover(geom,31,1000) as cover FROM  optim.jurisdiction_geom WHERE isolabel_ext ~ '^..$' order by 1
 
 -------------------------------------
 ----- Using UV normalized coordinates
