@@ -323,6 +323,7 @@ CREATE or replace FUNCTION osmc.encode(
                   'side', SQRT(ST_Area(geom_cell)),
                   'base', base,
                   'jurisd_local_id', jurisd_local_id,
+                  'jurisd_base_id', p_jurisd_base_id,
                   'scientic_code', CASE
                                     WHEN p_base = 32 AND p_jurisd_base_id     IN (76,868) THEN osmc.encode_16h1c(vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16,0),p_jurisd_base_id)
                                     WHEN p_base = 32 AND p_jurisd_base_id NOT IN (76,868) THEN vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16,0)
@@ -362,6 +363,7 @@ CREATE or replace FUNCTION osmc.encode(
                         'area', ST_Area(geom),
                         'side', SQRT(ST_Area(geom)),
                         'base', base,
+                        'jurisd_base_id', p_jurisd_base_id,
                         'jurisd_local_id', ss.jurisd_local_id
                         ))
                     )::jsonb)
