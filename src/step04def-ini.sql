@@ -254,6 +254,9 @@ COMMENT ON FUNCTION osmc.generate_gridcodes(text,int,int,float)
   IS 'Returns geohash table of grid centroids within the jurisdiction using the characteristic diameter.'
 ;
 
+-- SELECT * FROM osmc.generate_gridcodes('BR-SP-SaoPaulo');
+-- SELECT * FROM osmc.generate_gridcodes('BR-SP-Campinas');
+
 CREATE or replace FUNCTION osmc.generate_cover(
   p_isolabel_ext text,
   p_base         int DEFAULT 32,
@@ -356,6 +359,10 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.generate_cover(text,int,int,float)
   IS 'Simple generation of jurisdiction coverage possibilities. No overlay.'
 ;
+
+-- SELECT * FROM osmc.generate_cover('BR-SP-SaoPaulo');
+-- SELECT * FROM osmc.generate_cover('BR-SP-Campinas');
+
 
 CREATE or replace FUNCTION osmc.select_cover(
   p_isolabel_ext text,
