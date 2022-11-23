@@ -231,7 +231,7 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
   p_isolabel_ext text,
   p_base         int DEFAULT 32,
   p_uncertainty  int DEFAULT 1,
-  p_fraction     float DEFAULT 0.05 -- fraction of ST_CharactDiam
+  p_fraction     float DEFAULT 0.025 -- fraction of ST_CharactDiam
 ) RETURNS TABLE(id int, ggeohash text, geom geometry) AS $f$
     SELECT row_number() OVER() AS id, (geojson->'features')[0]->'properties'->>'code' AS ggeohash, geom
     FROM
@@ -247,13 +247,13 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
                 WHERE lower(g.isolabel_ext) = lower(p_isolabel_ext)
             ) a
         ) b
+        WHERE ST_Contains((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE lower(g.isolabel_ext) = lower(p_isolabel_ext)),geom_centroid)
     ) r
     ORDER BY ggeohash
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.generate_gridcodes(text,int,int,float)
   IS 'Returns geohash table of grid centroids within the jurisdiction using the characteristic diameter.'
 ;
-
 -- SELECT * FROM osmc.generate_gridcodes('BR-SP-SaoPaulo');
 -- SELECT * FROM osmc.generate_gridcodes('BR-SP-Campinas');
 
@@ -261,7 +261,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
   p_isolabel_ext text,
   p_base         int DEFAULT 32,
   p_uncertainty  int DEFAULT 1,
-  p_fraction     float DEFAULT 0.05 -- fraction of ST_CharactDiam
+  p_fraction     float DEFAULT 0.025 -- fraction of ST_CharactDiam
 ) RETURNS TABLE(number_cells int, cover text[]) AS $f$
 
     WITH list_ggeohash AS
@@ -359,19 +359,17 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.generate_cover(text,int,int,float)
   IS 'Simple generation of jurisdiction coverage possibilities. No overlay.'
 ;
-
 -- SELECT * FROM osmc.generate_cover('BR-SP-SaoPaulo');
 -- SELECT * FROM osmc.generate_cover('BR-SP-Campinas');
-
 
 CREATE or replace FUNCTION osmc.select_cover(
   p_isolabel_ext text,
   p_base         int DEFAULT 32,
   p_uncertainty  int DEFAULT 1,
-  p_fraction     float DEFAULT 0.05 -- fraction of ST_CharactDiam
-) RETURNS TABLE(number_cells int, cover text[], cover_scientific text[]) AS $f$
+  p_fraction     float DEFAULT 0.025 -- fraction of ST_CharactDiam
+) RETURNS TABLE(p_isolabel_ext text, srid int, jurisd_base_id int, cover text[], cover_scientific text[], number_cells int) AS $f$
 
-SELECT number_cells, cover, cover_scientific
+SELECT p_isolabel_ext::text, srid, jurisd_base_id, cover, cover_scientific, number_cells
 FROM
 (
     SELECT number_cells, cover, upper(split_part(p_isolabel_ext,'-',1)) AS iso
@@ -390,13 +388,46 @@ LATERAL (
                 ELSE NULL
                 END
             FROM unnest(cover) t(code)
-        ) AS cover_scientific
+        ) AS cover_scientific,
+        (('{"BR":952019, "UY":32721,"CO":9377}'::jsonb)->(iso))::int AS srid,
+        (('{"BR":76, "UY":858,"CO":170}'::jsonb)->(iso))::int AS jurisd_base_id
 ) q
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.select_cover(text,int,int,float)
   IS 'Returns first coverage with less than 32 cells.'
 ;
-
 -- SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas');
+
+/*
+DROP TABLE osmc.tmp_coverage_city2;
+CREATE TABLE osmc.tmp_coverage_city2 (
+  isolabel_ext text   NOT NULL,
+  srid         int    NOT NULL,
+  jurisd_base_id int NOT NULL,
+  cover        text[] NOT NULL,
+  cover_scientific text[] NOT NULL,
+  number_cells int
+);
+
+CREATE OR replace PROCEDURE osmc.cover_loop(
+    p_state_osm_id bigint
+)
+LANGUAGE PLpgSQL
+AS $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN EXECUTE format('SELECT isolabel_ext FROM optim.jurisdiction WHERE parent_id = %s' ,p_state_osm_id)
+    LOOP
+        RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
+        INSERT INTO osmc.tmp_coverage_city2 SELECT * FROM osmc.select_cover((r.isolabel_ext)::text);
+        COMMIT;
+        RAISE NOTICE 'Cobertura inserida';
+    END LOOP;
+END;
+$$;
+
+psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop(296584);" &> log_cover_sc
+*/
