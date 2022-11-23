@@ -223,3 +223,173 @@ FROM
   ORDER BY q.isolabel_ext, order_prefix
 ) x
 ;
+
+------------------
+-- generate coverage :
+
+CREATE or replace FUNCTION osmc.generate_gridcodes(
+  p_isolabel_ext text,
+  p_base         int DEFAULT 32,
+  p_uncertainty  int DEFAULT 1,
+  p_fraction     float DEFAULT 0.05 -- fraction of ST_CharactDiam
+) RETURNS TABLE(id int, ggeohash text, geom geometry) AS $f$
+    SELECT row_number() OVER() AS id, (geojson->'features')[0]->'properties'->>'code' AS ggeohash, geom
+    FROM
+    (
+        SELECT api.osmcode_encode('geo:' || ST_Y(geom_centroid) || ',' || ST_X(geom_centroid) || ';u=' || p_uncertainty,p_base,0) AS geojson, geom
+        FROM
+        (
+            SELECT ST_Centroid(geom) AS geom_centroid, geom
+            FROM
+            (
+                SELECT (ST_SquareGrid(ST_CharactDiam(geom)*p_fraction, geom)).*
+                FROM optim.vw01full_jurisdiction_geom g
+                WHERE lower(g.isolabel_ext) = lower(p_isolabel_ext)
+            ) a
+        ) b
+    ) r
+    ORDER BY ggeohash
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.generate_gridcodes(text,int,int,float)
+  IS 'Returns geohash table of grid centroids within the jurisdiction using the characteristic diameter.'
+;
+
+CREATE or replace FUNCTION osmc.generate_cover(
+  p_isolabel_ext text,
+  p_base         int DEFAULT 32,
+  p_uncertainty  int DEFAULT 1,
+  p_fraction     float DEFAULT 0.05 -- fraction of ST_CharactDiam
+) RETURNS TABLE(number_cells int, cover text[]) AS $f$
+
+    WITH list_ggeohash AS
+    (
+        SELECT *
+        FROM osmc.generate_gridcodes(p_isolabel_ext,p_base,p_uncertainty,p_fraction)
+    )
+    SELECT *
+    FROM
+    (
+        -- coverage with 7-digit cells
+        SELECT cardinality(cover) AS number_cells, cover
+        FROM
+        (
+            SELECT
+                ARRAY(
+                    SELECT substring(ggeohash,1,7) AS cell
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover
+        ) t7
+
+        UNION ALL
+
+        -- coverage with 6-digit cells
+        SELECT cardinality(cover) AS number_cells, cover
+        FROM
+        (
+            SELECT
+                ARRAY(
+                    SELECT substring(ggeohash,1,6) AS cell
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover
+        ) t6
+
+        UNION ALL
+
+        -- coverage with 5-digit cells
+        SELECT cardinality(cover) AS number_cells, cover
+        FROM
+        (
+            SELECT
+                ARRAY(
+                    SELECT substring(ggeohash,1,5) AS cell
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover
+        ) t5
+
+        UNION ALL
+
+        -- coverage with 4-digit cells
+        SELECT cardinality(cover) AS number_cells, cover
+        FROM
+        (
+            SELECT
+                ARRAY(
+                    SELECT substring(ggeohash,1,4) AS cell
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover
+        ) t4
+
+        UNION ALL
+
+        -- coverage with 3-digit cells
+        SELECT cardinality(cover) AS number_cells, cover
+        FROM
+        (
+            SELECT
+                ARRAY(
+                    SELECT substring(ggeohash,1,3) AS cell
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover
+        ) t3
+
+        UNION ALL
+
+        -- coverage with 2-digit cells
+        SELECT cardinality(cover) AS number_cells, cover
+        FROM
+        (
+            SELECT
+                ARRAY(
+                    SELECT substring(ggeohash,1,2) AS cell
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover
+        ) t2
+    ) t
+;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.generate_cover(text,int,int,float)
+  IS 'Simple generation of jurisdiction coverage possibilities. No overlay.'
+;
+
+CREATE or replace FUNCTION osmc.select_cover(
+  p_isolabel_ext text,
+  p_base         int DEFAULT 32,
+  p_uncertainty  int DEFAULT 1,
+  p_fraction     float DEFAULT 0.05 -- fraction of ST_CharactDiam
+) RETURNS TABLE(number_cells int, cover text[], cover_scientific text[]) AS $f$
+
+SELECT number_cells, cover, cover_scientific
+FROM
+(
+    SELECT number_cells, cover, upper(split_part(p_isolabel_ext,'-',1)) AS iso
+    FROM osmc.generate_cover(p_isolabel_ext,p_base,p_uncertainty,p_fraction)
+    WHERE number_cells < 32
+    ORDER BY number_cells DESC
+    LIMIT 1
+) p,
+LATERAL (
+    SELECT
+        ARRAY(
+            SELECT
+                CASE
+                WHEN p_base = 32 AND iso     IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END),16,0),((('{"BR":76, "UY":858}'::jsonb)->(iso))::int))
+                WHEN p_base = 32 AND iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||baseh_to_vbit(code,CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END),16,0)
+                ELSE NULL
+                END
+            FROM unnest(cover) t(code)
+        ) AS cover_scientific
+) q
+;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.select_cover(text,int,int,float)
+  IS 'Returns first coverage with less than 32 cells.'
+;
+
+-- SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');
+-- SELECT * FROM osmc.select_cover('BR-SP-Campinas');
