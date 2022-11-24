@@ -6,7 +6,7 @@ CREATE TABLE osmc.tmp_coverage_city (
   isolabel_ext text   NOT NULL,
   srid         int    NOT NULL,
   jurisd_base_id int NOT NULL,
-  cover        text[] NOT NULL
+  cover        text[] NOT NULL -- na base 16h
 );
 --DELETE FROM osmc.tmp_coverage_city;
 INSERT INTO osmc.tmp_coverage_city(isolabel_ext,srid,jurisd_base_id,cover) VALUES
@@ -246,6 +246,12 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
                 FROM optim.vw01full_jurisdiction_geom g
                 WHERE lower(g.isolabel_ext) = lower(p_isolabel_ext)
             ) a
+
+            UNION
+
+            SELECT (pt).geom, (pt).geom
+            FROM ( SELECT ST_DumpPoints((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE lower(g.isolabel_ext) = lower(p_isolabel_ext))) ) t1(pt)
+
         ) b
         WHERE ST_Contains((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE lower(g.isolabel_ext) = lower(p_isolabel_ext)),geom_centroid)
     ) r
@@ -401,8 +407,52 @@ COMMENT ON FUNCTION osmc.select_cover(text,int,int,float)
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas');
 
 /*
-DROP TABLE osmc.tmp_coverage_city2;
-CREATE TABLE osmc.tmp_coverage_city2 (
+DELETE FROM osmc.coverage WHERE isolabel_ext LIKE 'BR-SC-%' AND isolabel_ext NOT IN ('BR-SC-Bombinhas');
+
+INSERT INTO osmc.tmp_coverage_city_SC
+SELECT isolabel_ext, srid, jurisd_base_id, cover2
+FROM osmc.tmp_coverage_city4 p,
+LATERAL ( SELECT
+ARRAY(
+SELECT
+      CASE
+        -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
+        WHEN upper(split_part(isolabel_ext,'-',1)) = 'BR' AND substring(prefix,1,2) IN ('FL','FT','FS','FA','FB','F8','F9')
+        THEN ('0F')
+        -- FQ,F4,F5: tr F -> h
+        WHEN upper(split_part(isolabel_ext,'-',1)) = 'BR' AND substring(prefix,1,2) IN ('FQ','F4','F5')
+        THEN ('11')
+        -- FR,F6,F7: tr F -> g
+        WHEN upper(split_part(isolabel_ext,'-',1)) = 'BR' AND substring(prefix,1,2) IN ('FR','F6','F7')
+        THEN ('10')
+
+        -- E0,E1,E2: tr F -> g
+        WHEN upper(split_part(isolabel_ext,'-',1)) = 'UY' AND substring(prefix,1,2) IN ('E0','E1','E2','EJ','EN','EP')
+        THEN ('10')
+        -- EE,ED,EF: tr 0 -> j
+        WHEN upper(split_part(isolabel_ext,'-',1)) = 'UY' AND substring(prefix,1,2) IN ('0A','0B','0T')
+        THEN ('12')
+        -- ,,: tr 5 -> h
+        WHEN upper(split_part(isolabel_ext,'-',1)) = 'UY' AND substring(prefix,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F')
+        THEN ('11')
+        ELSE
+        (
+          ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
+            "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
+            "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
+            "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(prefix,1,1))
+        )
+      END || upper(substring(prefix,2))
+FROM unnest(cover_scientific) g(prefix)
+) AS cover2
+) q
+
+WHERE isolabel_ext NOT IN ( SELECT isolabel_ext FROM osmc.tmp_coverage_city_SC)
+;
+
+
+DROP TABLE osmc.tmp_coverage_city4;
+CREATE TABLE osmc.tmp_coverage_city4 (
   isolabel_ext text   NOT NULL,
   srid         int    NOT NULL,
   jurisd_base_id int NOT NULL,
@@ -419,10 +469,10 @@ AS $$
 DECLARE
     r RECORD;
 BEGIN
-    FOR r IN EXECUTE format('SELECT isolabel_ext FROM optim.jurisdiction WHERE parent_id = %s' ,p_state_osm_id)
+    FOR r IN EXECUTE format('SELECT isolabel_ext FROM optim.jurisdiction WHERE parent_id = %s AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.tmp_coverage_city_SC);' ,p_state_osm_id)
     LOOP
         RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
-        INSERT INTO osmc.tmp_coverage_city2 SELECT * FROM osmc.select_cover((r.isolabel_ext)::text);
+        INSERT INTO osmc.tmp_coverage_city4 SELECT * FROM osmc.select_cover((r.isolabel_ext)::text);
         COMMIT;
         RAISE NOTICE 'Cobertura inserida';
     END LOOP;
