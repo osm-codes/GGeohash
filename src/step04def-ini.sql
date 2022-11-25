@@ -434,83 +434,41 @@ FROM
     ORDER BY number_cells DESC
     LIMIT 1
 ) p,
--- generate array in scientific base
+-- generate array in scientific base. 16h
 LATERAL (
     SELECT
         ARRAY(
-            SELECT
-                CASE
-                WHEN iso     IN ('BR') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0),76)
-                WHEN iso     IN ('UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0),858)
-                WHEN iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0)
-                ELSE NULL
-                END
+            SELECT vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0)
+                -- CASE
+                -- WHEN iso     IN ('BR') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0),76)
+                -- WHEN iso     IN ('UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0),858)
+                -- WHEN iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0)
+                -- ELSE NULL
+                -- END
             FROM unnest(cover) t(code)
         ) AS cover_scientific,
-        (('{"BR":952019, "UY":32721,"CO":9377}'::jsonb)->(iso))::int AS srid,
-        (('{"BR":76, "UY":858,"CO":170}'::jsonb)->(iso))::int AS jurisd_base_id
+        (('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(iso))::int AS srid,
+        (('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(iso))::int AS jurisd_base_id
 ) q
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.select_cover(text,float)
   IS 'Returns first coverage with less than 32 cells.'
 ;
--- SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');
+-- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas');
 
 /*
 DELETE FROM osmc.coverage WHERE isolabel_ext LIKE 'BR-SC-%' AND isolabel_ext NOT IN ('BR-SC-Bombinhas');
 
-INSERT INTO osmc.tmp_coverage_city_SC
-SELECT isolabel_ext, srid, jurisd_base_id, cover2
-FROM osmc.tmp_coverage_city4 p,
-LATERAL ( SELECT
-ARRAY(
-SELECT
-      CASE
-        -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
-        WHEN upper(split_part(isolabel_ext,'-',1)) = 'BR' AND substring(prefix,1,2) IN ('FL','FT','FS','FA','FB','F8','F9')
-        THEN ('0F')
-        -- FQ,F4,F5: tr F -> h
-        WHEN upper(split_part(isolabel_ext,'-',1)) = 'BR' AND substring(prefix,1,2) IN ('FQ','F4','F5')
-        THEN ('11')
-        -- FR,F6,F7: tr F -> g
-        WHEN upper(split_part(isolabel_ext,'-',1)) = 'BR' AND substring(prefix,1,2) IN ('FR','F6','F7')
-        THEN ('10')
-
-        -- E0,E1,E2: tr F -> g
-        WHEN upper(split_part(isolabel_ext,'-',1)) = 'UY' AND substring(prefix,1,2) IN ('E0','E1','E2','EJ','EN','EP')
-        THEN ('10')
-        -- EE,ED,EF: tr 0 -> j
-        WHEN upper(split_part(isolabel_ext,'-',1)) = 'UY' AND substring(prefix,1,2) IN ('0A','0B','0T')
-        THEN ('12')
-        -- ,,: tr 5 -> h
-        WHEN upper(split_part(isolabel_ext,'-',1)) = 'UY' AND substring(prefix,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F')
-        THEN ('11')
-        ELSE
-        (
-          ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
-            "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
-            "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
-            "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(prefix,1,1))
-        )
-      END || upper(substring(prefix,2))
-FROM unnest(cover_scientific) g(prefix)
-) AS cover2
-) q
-
-WHERE isolabel_ext NOT IN ( SELECT isolabel_ext FROM osmc.tmp_coverage_city_SC)
-;
-
-
-DROP TABLE osmc.tmp_coverage_city4;
-CREATE TABLE osmc.tmp_coverage_city4 (
+DROP TABLE osmc.tmp_coverage_cityxyz;
+CREATE TABLE osmc.tmp_coverage_cityxyz (
   isolabel_ext text   NOT NULL,
   srid         int    NOT NULL,
   jurisd_base_id int NOT NULL,
+  number_cells int NOT NULL,
   cover        text[] NOT NULL,
-  cover_scientific text[] NOT NULL,
-  number_cells int
+  cover_scientific text[] NOT NULL -- 16h
 );
 
 CREATE OR replace PROCEDURE osmc.cover_loop(
@@ -521,10 +479,10 @@ AS $$
 DECLARE
     r RECORD;
 BEGIN
-    FOR r IN EXECUTE format('SELECT isolabel_ext FROM optim.jurisdiction WHERE parent_id = %s AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.tmp_coverage_city_SC);' ,p_state_osm_id)
+    FOR r IN EXECUTE format('SELECT isolabel_ext FROM optim.jurisdiction WHERE parent_id = %s;' ,p_state_osm_id)
     LOOP
         RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
-        INSERT INTO osmc.tmp_coverage_city4 SELECT * FROM osmc.select_cover((r.isolabel_ext)::text);
+        INSERT INTO osmc.tmp_coverage_cityxyz SELECT * FROM osmc.select_cover((r.isolabel_ext)::text);
         COMMIT;
         RAISE NOTICE 'Cobertura inserida';
     END LOOP;
