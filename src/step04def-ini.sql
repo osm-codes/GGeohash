@@ -229,35 +229,32 @@ FROM
 
 CREATE or replace FUNCTION osmc.generate_gridcodes(
   p_isolabel_ext text,
-  p_base         int DEFAULT 32,
-  p_uncertainty  int DEFAULT 1,
-  p_fraction     float DEFAULT 0.025 -- fraction of ST_CharactDiam
+  p_fraction     float DEFAULT 0.005 -- fraction of ST_CharactDiam
 ) RETURNS TABLE(id int, ggeohash text, geom geometry) AS $f$
-    SELECT row_number() OVER() AS id, (geojson->'features')[0]->'properties'->>'code' AS ggeohash, geom
+    SELECT row_number() OVER() AS id,
+          CASE split_part(p_isolabel_ext,'-',1)
+            WHEN 'BR' THEN osmc.encode_point_brazil(geom_centroid)
+            WHEN 'CO' THEN osmc.encode_point_colombia(geom_centroid)
+          END AS ggeohash,
+          geom
     FROM
     (
-        SELECT api.osmcode_encode('geo:' || ST_Y(geom_centroid) || ',' || ST_X(geom_centroid) || ';u=' || p_uncertainty,p_base,0) AS geojson, geom
+        SELECT ST_Centroid(geom) AS geom_centroid, geom
         FROM
         (
-            SELECT ST_Centroid(geom) AS geom_centroid, geom
-            FROM
-            (
-                SELECT (ST_SquareGrid(ST_CharactDiam(geom)*p_fraction, geom)).*
-                FROM optim.vw01full_jurisdiction_geom g
-                WHERE lower(g.isolabel_ext) = lower(p_isolabel_ext)
-            ) a
+            SELECT (ST_SquareGrid(ST_CharactDiam(geom)*p_fraction, geom)).*
+            FROM optim.vw01full_jurisdiction_geom g
+            WHERE g.isolabel_ext = p_isolabel_ext
+        ) a
+        WHERE ST_Contains((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext),ST_Centroid(geom))
 
-            UNION
+        UNION
 
-            SELECT (pt).geom, (pt).geom
-            FROM ( SELECT ST_DumpPoints((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE lower(g.isolabel_ext) = lower(p_isolabel_ext))) ) t1(pt)
-
-        ) b
-        WHERE ST_Contains((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE lower(g.isolabel_ext) = lower(p_isolabel_ext)),geom_centroid)
-    ) r
-    ORDER BY ggeohash
+        SELECT (pt).geom, (pt).geom
+        FROM ( SELECT ST_DumpPoints((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext)) ) t1(pt)
+    ) b
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.generate_gridcodes(text,int,int,float)
+COMMENT ON FUNCTION osmc.generate_gridcodes(text,float)
   IS 'Returns geohash table of grid centroids within the jurisdiction using the characteristic diameter.'
 ;
 -- SELECT * FROM osmc.generate_gridcodes('BR-SP-SaoPaulo');
@@ -265,15 +262,13 @@ COMMENT ON FUNCTION osmc.generate_gridcodes(text,int,int,float)
 
 CREATE or replace FUNCTION osmc.generate_cover(
   p_isolabel_ext text,
-  p_base         int DEFAULT 32,
-  p_uncertainty  int DEFAULT 1,
-  p_fraction     float DEFAULT 0.025 -- fraction of ST_CharactDiam
+  p_fraction     float DEFAULT 0.005 -- fraction of ST_CharactDiam
 ) RETURNS TABLE(number_cells int, cover text[]) AS $f$
 
     WITH list_ggeohash AS
     (
         SELECT *
-        FROM osmc.generate_gridcodes(p_isolabel_ext,p_base,p_uncertainty,p_fraction)
+        FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction)
     )
     SELECT *
     FROM
@@ -362,7 +357,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
     ) t
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.generate_cover(text,int,int,float)
+COMMENT ON FUNCTION osmc.generate_cover(text,float)
   IS 'Simple generation of jurisdiction coverage possibilities. No overlay.'
 ;
 -- SELECT * FROM osmc.generate_cover('BR-SP-SaoPaulo');
@@ -370,27 +365,26 @@ COMMENT ON FUNCTION osmc.generate_cover(text,int,int,float)
 
 CREATE or replace FUNCTION osmc.select_cover(
   p_isolabel_ext text,
-  p_base         int DEFAULT 32,
-  p_uncertainty  int DEFAULT 1,
-  p_fraction     float DEFAULT 0.025 -- fraction of ST_CharactDiam
-) RETURNS TABLE(p_isolabel_ext text, srid int, jurisd_base_id int, cover text[], cover_scientific text[], number_cells int) AS $f$
-
-SELECT p_isolabel_ext::text, srid, jurisd_base_id, cover, cover_scientific, number_cells
+  p_fraction     float DEFAULT 0.005 -- fraction of ST_CharactDiam
+) RETURNS TABLE(p_isolabel_ext text, srid int, jurisd_base_id int, number_cells int, cover text[], cover_scientific text[]) AS $f$
+SELECT p_isolabel_ext::text, srid, jurisd_base_id, number_cells, cover, cover_scientific
 FROM
 (
-    SELECT number_cells, cover, upper(split_part(p_isolabel_ext,'-',1)) AS iso
-    FROM osmc.generate_cover(p_isolabel_ext,p_base,p_uncertainty,p_fraction)
-    WHERE number_cells < 32
+    SELECT number_cells, cover, split_part(p_isolabel_ext,'-',1) AS iso
+    FROM osmc.generate_cover(p_isolabel_ext,p_fraction)
+    WHERE number_cells < 32 -- MAX 31 cells
     ORDER BY number_cells DESC
     LIMIT 1
 ) p,
+-- generate array in scientific base
 LATERAL (
     SELECT
         ARRAY(
             SELECT
                 CASE
-                WHEN p_base = 32 AND iso     IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END),16,0),((('{"BR":76, "UY":858}'::jsonb)->(iso))::int))
-                WHEN p_base = 32 AND iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||baseh_to_vbit(code,CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END),16,0)
+                WHEN iso     IN ('BR') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0),76)
+                WHEN iso     IN ('UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0),858)
+                WHEN iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0)
                 ELSE NULL
                 END
             FROM unnest(cover) t(code)
@@ -400,7 +394,7 @@ LATERAL (
 ) q
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.select_cover(text,int,int,float)
+COMMENT ON FUNCTION osmc.select_cover(text,float)
   IS 'Returns first coverage with less than 32 cells.'
 ;
 -- SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');

@@ -300,6 +300,35 @@ COMMENT ON FUNCTION osmc.encode_16h1c(text,int)
   IS 'Encodes ghosts in BR and UY.'
 ;
 
+-- -- :
+
+CREATE or replace FUNCTION osmc.encode_point_brazil(
+  p_geom  geometry(POINT)
+) RETURNS text AS $wrap$
+  SELECT (vbit_to_baseh((id::bit(64)<<30)::bit(5) || ggeohash.encode3(ST_X(cc),ST_Y(cc),bbox,40,false),32,0))
+  FROM osmc.coverage, LATERAL (SELECT ST_Transform(p_geom,952019)) v(cc)
+  WHERE ( (id::bit(64)    )::bit(10) ) = b'0001001100' -- 76, cover Brasil
+    AND ( (id::bit(64)<<24)::bit(2)  ) = b'00' -- only country cover
+    AND ST_Contains(geom_srid4326,p_geom)
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_point_brazil(geometry(POINT))
+  IS 'Encode Point for Brazil. base32, 8 digits'
+;
+
+CREATE or replace FUNCTION osmc.encode_point_colombia(
+  p_geom  geometry(POINT)
+) RETURNS text AS $wrap$
+  SELECT (vbit_to_baseh((id::bit(64)<<30)::bit(5) || ggeohash.encode3(ST_X(cc),ST_Y(cc),bbox,40,false),32,0))
+  FROM osmc.coverage, LATERAL (SELECT ST_Transform(p_geom,9377)) v(cc)
+  WHERE ( (id::bit(64)    )::bit(10) ) = b'0010101010' -- 170, cover Colombia
+    AND ( (id::bit(64)<<24)::bit(2)  ) = b'00' -- only country cover
+    AND ST_Contains(geom_srid4326,p_geom)
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_point_colombia(geometry(POINT))
+  IS 'Encode Point for Colombia. base32, 8 digits'
+;
+
+
 CREATE or replace FUNCTION osmc.encode(
   p_geom       geometry(POINT),
   p_base       int     DEFAULT 32,
@@ -395,20 +424,22 @@ CREATE or replace FUNCTION osmc.encode(
                 || (CASE WHEN length(xx.ghs) = length(prefix32) THEN '' ELSE substr(xx.ghs,length(prefix32),length(xx.ghs)) END) ) AS short_code
                 FROM osmc.coverage rr, LATERAL ( SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32)
                 WHERE
+                    (id::bit(64))::bit(10) = p_jurisd_base_id::bit(10)
+                AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
+                AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(rr.geom,p_geom) ELSE TRUE  END
                 -- (   ( (id::bit(64)<<32)::bit(20) #  codebits::bit(20)           ) = 0::bit(20)
                 --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(15))::bit(20) ) = 0::bit(20)
                 --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(10))::bit(20) ) = 0::bit(20)
                 --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(5) )::bit(20) ) = 0::bit(20)
                 -- )
+                AND
                 (  prefix32 = substr(xx.ghs,1,5)
                 OR prefix32 = substr(xx.ghs,1,4)
                 OR prefix32 = substr(xx.ghs,1,3)
                 OR prefix32 = substr(xx.ghs,1,2)
                 OR prefix32 = substr(xx.ghs,1,1)
                 )
-                AND (id::bit(64))::bit(10) = p_jurisd_base_id::bit(10)
-                AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
-                AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(rr.geom,p_geom) ELSE TRUE  END
+
                 ORDER BY length(prefix) DESC
               ) tt
               ON TRUE
@@ -437,20 +468,22 @@ CREATE or replace FUNCTION osmc.encode(
       || (CASE WHEN length(c.code) = length(prefix32) THEN '' ELSE substr(c.code,length(prefix32)+1,length(c.code)) END) ) AS short_code
       FROM osmc.coverage r, LATERAL ( SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32)
       WHERE
+           (id::bit(64))::bit(10) = p_jurisd_base_id::bit(10)
+      AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
+      AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,p_geom) ELSE TRUE  END
       -- (   ( (id::bit(64)<<32)::bit(20) #  codebits::bit(20)           ) = 0::bit(20)
       --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(15))::bit(20) ) = 0::bit(20)
       --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(10))::bit(20) ) = 0::bit(20)
       --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(5) )::bit(20) ) = 0::bit(20)
       -- )
+      AND
       (   prefix32 = substr(c.code,1,5)
        OR prefix32 = substr(c.code,1,4)
        OR prefix32 = substr(c.code,1,3)
        OR prefix32 = substr(c.code,1,2)
        OR prefix32 = substr(c.code,1,1)
       )
-      AND (id::bit(64))::bit(10) = p_jurisd_base_id::bit(10)
-      AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
-      AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,p_geom) ELSE TRUE  END
+
       ORDER BY length(prefix) DESC
     ) t
     ON TRUE
@@ -520,9 +553,8 @@ CREATE or replace FUNCTION api.osmcode_encode(
         ELSE                           (id::bit(64)<<30)::bit(5) -- 1 dígito  base32
         END AS l0code
     FROM osmc.coverage
-    WHERE ST_Contains(geom_srid4326,v.geom)
-          -- cobertura nacional apenas
-          AND ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2)
+    WHERE ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2) -- cobertura nacional apenas
+        AND ST_Contains(geom_srid4326,v.geom)
   ) u
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION api.osmcode_encode(text,int,int)
