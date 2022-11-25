@@ -281,6 +281,71 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,text[])
 ;
 -- SELECT osmc.update_coverage_isolevel3_161c('BR-PA-Altamira','{21G,62H,63G,63H,68G,68H,69G,69H,6AG,6AH,6BG,6BH,211FP,211FS,211FT,211FV,211FZ,2135N,2135Q,211K,211L,211M,213K,214L}'::text[]);
 
+CREATE or replace FUNCTION osmc.check_coverage(
+  p_isolabel_ext text,
+  p_cover     text[] -- 16h
+) RETURNS TABLE(isolabel_ext text, prefix text[], order_prefix int[], ContainsProperly boolean[], Intersects boolean[], UnionContainsProperly boolean) AS $f$
+
+SELECT p_isolabel_ext, prefix, order_prefix, ContainsProperly, Intersects, ST_ContainsProperly(geomunion,z.geom_transformed) AS UnionContainsProperly
+FROM
+(
+  SELECT array_agg(prefix) AS prefix, array_agg(order_prefix) AS order_prefix,
+    array_agg(ST_ContainsProperly(r.geom_transformed,geom)) AS ContainsProperly,
+    array_agg(ST_Intersects(r.geom_transformed,geom)) AS Intersects,
+    MAX(srid) AS srid,
+    ST_Union(x.geom) AS geomunion
+  FROM
+  (
+    SELECT
+    order_prefix,
+    prefix,
+    ggeohash.draw_cell_bybox(bbox,false,p.srid) AS geom,
+    p.srid AS srid
+    FROM
+    (
+      SELECT isolabel_ext, srid, jurisd_base_id, prefix,
+            ROW_NUMBER() OVER (PARTITION BY isolabel_ext ORDER BY length(prefix), prefix ASC) AS order_prefix,
+            baseh_to_vbit(prefix,16) AS prefix_bits
+      FROM
+      (
+        SELECT p_isolabel_ext AS isolabel_ext,
+               ((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
+               ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS jurisd_base_id,
+               unnest(p_cover) AS prefix
+      ) pp
+    ) p,
+    -- bbox prefix
+    LATERAL
+    (
+      SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(substring(p.prefix_bits from 9),bbox) ELSE bbox END) AS bbox
+      FROM osmc.coverage
+      WHERE   (  (id::bit(64)    )::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10) )
+          AND (  (id::bit(64)<<24)::bit(2) ) = 0::bit(2)
+          AND ( ((id::bit(64)<<27)::bit(8) # prefix_bits::bit(8) ) = 0::bit(8)  )-- L0 2 dígitos base16h
+    ) s
+    ORDER BY p.isolabel_ext, order_prefix
+  ) x,
+  -- geom jurisdiction
+  LATERAL
+  (
+    SELECT ST_Transform(g.geom,x.srid) AS geom_transformed
+    FROM optim.vw01full_jurisdiction_geom g
+    WHERE isolabel_ext = p_isolabel_ext
+  ) r
+) y,
+-- geom jurisdiction
+LATERAL
+(
+  SELECT ST_Transform(g.geom,y.srid) AS geom_transformed
+  FROM optim.vw01full_jurisdiction_geom g
+  WHERE isolabel_ext = p_isolabel_ext
+) z
+$f$ LANGUAGE SQL;
+COMMENT ON FUNCTION osmc.check_coverage(text,text[])
+  IS 'Update coverage isolevel3 in base 16h.'
+;
+-- SELECT osmc.check_coverage('BR-PA-Altamira','{021G,062H,063G,063H,068G,068H,069G,069H,06AG,06AH,06BG,06BH,0211FP,0211FS,0211FT,0211FV,0211FZ,02135N,02135Q,0211K,0211L,0211M,0213K,0214L}'::text[]);
+-- SELECT osmc.check_coverage('BR-SP-SaoPaulo','{0DF6J,0DF6L,0DF6M,0DFCJ,0DFCK,0DF69T,0DF6AV,0DF6BN,0DF6BS,0DF6BT,0DF6BZ,0DFC0R,0DFC1N,0DFC1P,0DFC1Q,0DFC1R,0DFC1S,0DFC1T,0DFC1V,0DFC1Z,0DFC2Q,0DFC3N,0DFC3Q,0DFC4N,0DFC4P,0DFC4R,0DFC4S,0DFC4V,0DF69P,0DF6AZ,0DFC0Q}'::text[]);
 
 ------------------
 -- generate coverage :
@@ -459,7 +524,7 @@ COMMENT ON FUNCTION osmc.select_cover(text,float)
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas');
 
 /*
-DELETE FROM osmc.coverage WHERE isolabel_ext LIKE 'BR-SC-%' AND isolabel_ext NOT IN ('BR-SC-Bombinhas');
+DELETE FROM osmc.coverage WHERE isolabel_ext LIKE 'BR-SC-%' AND isolabel_ext NOT IN ('BR-SC-Bombinhas','BR-SC-Florianopolis');
 
 DROP TABLE osmc.tmp_coverage_cityxyz;
 CREATE TABLE osmc.tmp_coverage_cityxyz (
