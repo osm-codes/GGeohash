@@ -524,6 +524,49 @@ COMMENT ON FUNCTION osmc.select_cover(text,float)
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas');
 
 /*
+DROP TABLE osmc.tmp_check_coverage;
+CREATE TABLE osmc.tmp_check_coverage (
+  isolabel_ext text   NOT NULL,
+  prefix text[],
+  order_prefix int[],
+  ContainsProperly boolean[],
+  Intersects boolean[],
+  UnionContainsProperly boolean
+);
+
+INSERT INTO osmc.tmp_check_coverage
+SELECT (osmc.check_coverage(isolabel_ext,array_remove(cover_scientific,'N'))).*
+FROM osmc.tmp_coverage_cityxyz
+;
+-- 1547
+
+-- Return coverage OK
+SELECT count(*)
+FROM osmc.tmp_check_coverage
+WHERE UnionContainsProperly is true AND false != ANY(Intersects);
+-- 1483
+
+-- Return complete coverage with non-intercepting cells.
+-- Solution: remove cells that do not intersect
+SELECT count(*)
+FROM osmc.tmp_check_coverage
+WHERE UnionContainsProperly is true AND false = ANY(Intersects);
+-- 2
+
+-- Return partial coverage.
+-- Possible solution: increase amount of points
+SELECT count(*)
+FROM osmc.tmp_check_coverage
+WHERE UnionContainsProperly is false AND false != ANY(Intersects);
+-- 64
+
+-- Return partial coverage with non-intercepting cells.
+-- Possible solution: increase amount of points and remove cells that do not intersect
+SELECT count(*)
+FROM osmc.tmp_check_coverage
+WHERE UnionContainsProperly is false AND false = ANY(Intersects);
+-- 1
+
 DELETE FROM osmc.coverage WHERE isolabel_ext LIKE 'BR-SC-%' AND isolabel_ext NOT IN ('BR-SC-Bombinhas','BR-SC-Florianopolis');
 
 DROP TABLE osmc.tmp_coverage_cityxyz;
