@@ -511,6 +511,7 @@ $$;
 
 -- Refinar grid e gerar novas coberturas para coberturas type 3 e type 4
 CREATE OR replace PROCEDURE osmc.cover_loop3(
+  p_fraction float
 )
 LANGUAGE PLpgSQL
 AS $$
@@ -520,7 +521,7 @@ BEGIN
     FOR r IN (SELECT isolabel_ext FROM osmc.tmp_check_coverage WHERE UnionContainsProperly is false)
     LOOP
         RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
-        INSERT INTO osmc.tmp_coverage_city SELECT * FROM osmc.select_cover((r.isolabel_ext)::text,0.001);
+        INSERT INTO osmc.tmp_coverage_city SELECT * FROM osmc.select_cover((r.isolabel_ext)::text,p_fraction);
         COMMIT;
         RAISE NOTICE 'Cobertura inserida';
     END LOOP;
@@ -615,7 +616,11 @@ WHERE isolabel_ext IN (SELECT isolabel_ext FROM osmc.coverage);
 
 -- Refinar grid de coberturas type 3 e type 4
 DELETE FROM osmc.tmp_coverage_city;
-psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop3();" &> log_cover_sc
+psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop3(0.001);" &> log_cover_sc
+
+-- repetir processo e refinar as que ainda forem type 3 e 4
+DELETE FROM osmc.tmp_coverage_city;
+psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop3(0.0001);" &> log_cover_sc
 
 
 -- para checar coberturas existentes:
