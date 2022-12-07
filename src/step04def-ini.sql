@@ -3,11 +3,11 @@
 
 -- L0cover COLOMBIA
 --DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 170::bit(10);
-INSERT INTO osmc.coverage(id,bbox,geom,geom_srid4326)
+INSERT INTO osmc.coverage(id,isolabel_ext,bbox,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        bbox, geom, ST_Transform(geom,4326)
+        'CO',bbox, geom, ST_Transform(geom,4326)
 FROM
 (
   SELECT 170 AS jurisd_base_id,prefix,bbox,geom_country,
@@ -28,11 +28,11 @@ ORDER BY 1
 
 -- L0cover BRASIL
 --DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 76::bit(10);
-INSERT INTO osmc.coverage(id,bbox,geom,geom_srid4326)
+INSERT INTO osmc.coverage(id,isolabel_ext,bbox,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        bbox, geom, ST_Transform(geom,4326)
+        'BR',bbox, geom, ST_Transform(geom,4326)
 FROM
 (
     SELECT 76 AS jurisd_base_id, prefix, bbox,geom_country,
@@ -52,11 +52,11 @@ ORDER BY 1
 
 -- L0cover URUGUAI
 --DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 858::bit(10);
-INSERT INTO osmc.coverage(id,bbox,geom,geom_srid4326)
+INSERT INTO osmc.coverage(id,isolabel_ext,bbox,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        bbox, geom, ST_Transform(geom,4326)
+        'UY',bbox, geom, ST_Transform(geom,4326)
 FROM
 (
   SELECT 858 AS jurisd_base_id,prefix,bbox,geom_country,
@@ -75,11 +75,11 @@ FROM
 
 -- L0cover ECUADOR
 --DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 218::bit(10);
-INSERT INTO osmc.coverage(id,bbox,geom,geom_srid4326)
+INSERT INTO osmc.coverage(id,isolabel_ext,bbox,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        bbox, geom, ST_Transform(geom,4326)
+        'EC',bbox, geom, ST_Transform(geom,4326)
 FROM
 (
   (
@@ -288,9 +288,26 @@ COMMENT ON FUNCTION osmc.check_coverage(text,text[])
 ------------------
 -- generate coverage :
 
+CREATE OR REPLACE FUNCTION osmc.buffer_geom(geom geometry, buffer_type integer )
+RETURNS geometry AS $f$
+    SELECT
+        CASE
+        WHEN buffer_type=0 THEN geom                  -- no buffer
+        WHEN buffer_type=1 THEN ST_Buffer(geom,0.001) -- ~100m
+        WHEN buffer_type=2 THEN ST_Buffer(geom,0.05)  -- ~5000m
+        WHEN buffer_type=3 THEN ST_Buffer(geom,0.5)   -- ~50km
+        WHEN buffer_type=4 THEN ST_Buffer(geom,5)     -- ~500km
+        ELSE geom                                     -- no buffer
+        END
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.buffer_geom(geometry,integer)
+  IS 'Add standardized buffer to geometries.'
+;
+
 CREATE or replace FUNCTION osmc.generate_gridcodes(
   p_isolabel_ext text,
-  p_fraction     float DEFAULT 0.005 -- fraction of ST_CharactDiam
+  p_fraction     float DEFAULT 0.005, -- fraction of ST_CharactDiam
+  buffer_type    integer DEFAULT 0
 ) RETURNS TABLE(id int, ggeohash text, geom geometry) AS $f$
     SELECT row_number() OVER() AS id,
           CASE split_part(p_isolabel_ext,'-',1)
@@ -315,14 +332,15 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
         FROM ( SELECT ST_DumpPoints((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext)) ) t1(pt)
     ) b
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.generate_gridcodes(text,float)
+COMMENT ON FUNCTION osmc.generate_gridcodes(text,float,integer)
   IS 'Returns geohash table of grid centroids within the jurisdiction using the characteristic diameter.'
 ;
 -- SELECT * FROM osmc.generate_gridcodes('BR-SP-SaoPaulo');
 
 CREATE or replace FUNCTION osmc.generate_cover(
   p_isolabel_ext text,
-  p_fraction     float DEFAULT 0.005 -- fraction of ST_CharactDiam
+  p_fraction     float DEFAULT 0.005, -- fraction of ST_CharactDiam
+  buffer_type    integer DEFAULT 0
 ) RETURNS TABLE(number_cells int, cover text[]) AS $f$
 
     WITH list_ggeohash AS
@@ -417,14 +435,15 @@ CREATE or replace FUNCTION osmc.generate_cover(
     ) t
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.generate_cover(text,float)
+COMMENT ON FUNCTION osmc.generate_cover(text,float,integer)
   IS 'Simple generation of jurisdiction coverage possibilities. No overlay.'
 ;
 -- SELECT * FROM osmc.generate_cover('BR-SP-SaoPaulo');
 
 CREATE or replace FUNCTION osmc.select_cover(
   p_isolabel_ext text,
-  p_fraction     float DEFAULT 0.005 -- fraction of ST_CharactDiam
+  p_fraction     float DEFAULT 0.005, -- fraction of ST_CharactDiam
+  buffer_type    integer DEFAULT 0
 ) RETURNS TABLE(p_isolabel_ext text, srid int, jurisd_base_id int, number_cells int, cover text[], cover_scientific text[]) AS $f$
 SELECT p_isolabel_ext::text, srid, jurisd_base_id, number_cells, cover, cover_scientific
 FROM
@@ -453,7 +472,7 @@ LATERAL (
 ) q
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.select_cover(text,float)
+COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
   IS 'Returns first coverage with less than 32 cells.'
 ;
 -- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');

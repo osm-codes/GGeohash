@@ -245,8 +245,9 @@ CREATE TABLE osmc.coverage (
   geom          geometry, -- used      in l0cover and de-para
   geom_srid4326 geometry  -- used only in l0cover
 );
-CREATE INDEX osm_coverage_geom_idx1     ON osmc.coverage USING gist (geom);
-CREATE INDEX osm_coverage_geom4326_idx1 ON osmc.coverage USING gist (geom_srid4326);
+CREATE INDEX osm_coverage_geom_idx1         ON osmc.coverage USING gist (geom);
+CREATE INDEX osm_coverage_geom4326_idx1     ON osmc.coverage USING gist (geom_srid4326);
+CREATE INDEX osm_coverage_isolabel_ext_idx1 ON osmc.coverage USING btree (isolabel_ext);
 
 ------------------
 -- encode:
@@ -739,61 +740,153 @@ CREATE or replace FUNCTION api.osmcode_encode_context(
   grid   int DEFAULT 0,
   p_isolabel_ext text DEFAULT NULL
 ) RETURNS jsonb AS $wrap$
-  SELECT osmc.encode_context(
-    ST_Transform(v.geom,u.srid),
-    p_base,
-    CASE
-    WHEN latLon[4] IS NOT NULL
-    THEN
-    (
-      SELECT
+  SELECT
+    CASE split_part(p_isolabel_ext,'-',1)
+    WHEN 'BR' THEN
+
+      osmc.encode_context(ST_Transform(u.geom,952019),p_base,
       CASE
-        WHEN jurisd_base_id = 170 AND p_base = 32       AND x > 4 THEN ((x-4)/5)*5
-        WHEN jurisd_base_id = 170 AND p_base = 16       AND x > 4 THEN   x-4
-        WHEN jurisd_base_id = 858 AND p_base = 32       AND x > 6 THEN ((x-6)/5)*5
-        WHEN jurisd_base_id = 858 AND p_base = 17       AND x > 6 THEN ((x-6)/4)*4
-        WHEN jurisd_base_id = 858 AND p_base IN (16,18) AND x > 6 THEN   x-6
-        WHEN jurisd_base_id = 218 AND p_base = 32       AND x > 5 THEN ((x-5)/5)*5
-        WHEN jurisd_base_id = 218 AND p_base = 16       AND x > 5 THEN   x-5
-        WHEN jurisd_base_id = 76  AND p_base = 32                 THEN  (x/5)*5
-        WHEN jurisd_base_id = 76  AND p_base IN (16,18)           THEN   x
-        ELSE 0
-      END
-      FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
-      )
-    ELSE 35
-    END,
-    u.srid,
-    grid,
-    u.bbox,
-    u.l0code,
-    u.jurisd_base_id,
-    CASE WHEN u.jurisd_base_id = 218 THEN TRUE ELSE FALSE END,
-    p_isolabel_ext
-  )
+      WHEN latLon[4] IS NOT NULL
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base IN (32)              THEN  (x/5)*5
+          WHEN p_base IN (16,18)           THEN   x
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+        )
+      ELSE 35
+      END,
+      952019,grid,u.bbox,u.l0code,76,FALSE,'BR')
+
+    WHEN 'CO' THEN
+
+      osmc.encode_context(ST_Transform(u.geom,9377),p_base,
+      CASE
+      WHEN latLon[4] IS NOT NULL
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base = 32       AND x > 4 THEN ((x-4)/5)*5
+          WHEN p_base = 16       AND x > 4 THEN   x-4
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+        )
+      ELSE 35
+      END,
+      9377,grid,u.bbox,u.l0code,170,FALSE,'CO')
+
+    WHEN 'UY' THEN
+
+      osmc.encode_context(ST_Transform(u.geom,32721),p_base,
+      CASE
+      WHEN latLon[4] IS NOT NULL
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base = 32       AND x > 6 THEN ((x-6)/5)*5
+          WHEN p_base = 17       AND x > 6 THEN ((x-6)/4)*4
+          WHEN p_base IN (16,18) AND x > 6 THEN   x-6
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+        )
+      ELSE 35
+      END,
+      32721,grid,u.bbox,u.l0code,858,FALSE,'UY')
+
+    WHEN 'EC' THEN
+
+      osmc.encode_context(ST_Transform(u.geom,32717),p_base,
+      CASE
+      WHEN latLon[4] IS NOT NULL
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base = 32       AND x > 5 THEN ((x-5)/5)*5
+          WHEN p_base = 16       AND x > 5 THEN   x-5
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+        )
+      ELSE 35
+      END,
+      32717,grid,u.bbox,u.l0code,218,TRUE,'EC')
+
+    END
   FROM ( SELECT str_geouri_decode(uri) ) t(latLon),
-  LATERAL ( SELECT ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326) ) v(geom),
   LATERAL
   (
-    SELECT ((id::bit(64))::bit(10))::int AS jurisd_base_id, bbox, ST_SRID(geom) AS srid,
+    SELECT ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326) AS geom, bbox,
         CASE
         WHEN p_base IN (16,17,18) THEN (id::bit(64)<<27)::bit(8) -- 2 dígito  base16h
         ELSE                           (id::bit(64)<<30)::bit(5) -- 1 dígito  base32
         END AS l0code
     FROM osmc.coverage
-    WHERE
-        ( (id::bit(64)<<24)::bit(2) ) = b'00' -- cobertura nacional apenas
-        AND
-        (
-            CASE
-            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' THEN ( (id::bit(64) )::bit(10) ) = b'0001001100' --  76, cover Brasil
-            WHEN split_part(p_isolabel_ext,'-',1) = 'CO' THEN ( (id::bit(64) )::bit(10) ) = b'0010101010' -- 170, cover Colombia
-            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' THEN ( (id::bit(64) )::bit(10) ) = b'1101011010' -- 858, cover Uruguay
-            WHEN split_part(p_isolabel_ext,'-',1) = 'EC' THEN ( (id::bit(64) )::bit(10) ) = b'0011011010' -- 218, cover Ecuador
-            END
-        )
-        AND ST_Contains(geom_srid4326,v.geom)
+    WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1) AND ST_Contains(geom_srid4326,ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326))
   ) u
+
+  -- osmc.encode_context(
+  --   ST_Transform(v.geom,u.srid),
+  --   p_base,
+  --   CASE
+  --   WHEN latLon[4] IS NOT NULL
+  --   THEN
+  --   (
+  --     SELECT
+  --     CASE
+  --       WHEN jurisd_base_id = 170 AND p_base = 32       AND x > 4 THEN ((x-4)/5)*5
+  --       WHEN jurisd_base_id = 170 AND p_base = 16       AND x > 4 THEN   x-4
+  --       WHEN jurisd_base_id = 858 AND p_base = 32       AND x > 6 THEN ((x-6)/5)*5
+  --       WHEN jurisd_base_id = 858 AND p_base = 17       AND x > 6 THEN ((x-6)/4)*4
+  --       WHEN jurisd_base_id = 858 AND p_base IN (16,18) AND x > 6 THEN   x-6
+  --       WHEN jurisd_base_id = 218 AND p_base = 32       AND x > 5 THEN ((x-5)/5)*5
+  --       WHEN jurisd_base_id = 218 AND p_base = 16       AND x > 5 THEN   x-5
+  --       WHEN jurisd_base_id = 76  AND p_base = 32                 THEN  (x/5)*5
+  --       WHEN jurisd_base_id = 76  AND p_base IN (16,18)           THEN   x
+  --       ELSE 0
+  --     END
+  --     FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+  --     )
+  --   ELSE 35
+  --   END,
+  --   u.srid,
+  --   grid,
+  --   u.bbox,
+  --   u.l0code,
+  --   u.jurisd_base_id,
+  --   CASE WHEN u.jurisd_base_id = 218 THEN TRUE ELSE FALSE END,
+  --   p_isolabel_ext
+  -- )
+  -- FROM ( SELECT str_geouri_decode(uri) ) t(latLon),
+  -- LATERAL ( SELECT ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326) ) v(geom),
+  -- LATERAL
+  -- (
+  --   SELECT ((id::bit(64))::bit(10))::int AS jurisd_base_id, bbox, ST_SRID(geom) AS srid,
+  --       CASE
+  --       WHEN p_base IN (16,17,18) THEN (id::bit(64)<<27)::bit(8) -- 2 dígito  base16h
+  --       ELSE                           (id::bit(64)<<30)::bit(5) -- 1 dígito  base32
+  --       END AS l0code
+  --   FROM osmc.coverage
+  --   WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1)
+  --       -- ( (id::bit(64)<<24)::bit(2) ) = b'00' -- cobertura nacional apenas
+  --       -- AND
+  --       -- (
+  --       --     CASE
+  --       --     WHEN split_part(p_isolabel_ext,'-',1) = 'BR' THEN ( (id::bit(64) )::bit(10) ) = b'0001001100' --  76, cover Brasil
+  --       --     WHEN split_part(p_isolabel_ext,'-',1) = 'CO' THEN ( (id::bit(64) )::bit(10) ) = b'0010101010' -- 170, cover Colombia
+  --       --     WHEN split_part(p_isolabel_ext,'-',1) = 'UY' THEN ( (id::bit(64) )::bit(10) ) = b'1101011010' -- 858, cover Uruguay
+  --       --     WHEN split_part(p_isolabel_ext,'-',1) = 'EC' THEN ( (id::bit(64) )::bit(10) ) = b'0011011010' -- 218, cover Ecuador
+  --       --     END
+  --       -- )
+  --       AND ST_Contains(geom_srid4326,v.geom)
+  -- ) u
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION api.osmcode_encode_context(text,int,int,text)
   IS 'Encodes Geo URI to OSMcode using context. Wrap for osmcode_encode_context(geometry)'
