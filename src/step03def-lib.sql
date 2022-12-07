@@ -920,8 +920,8 @@ CREATE or replace FUNCTION api.osmcode_decode(
                                 END,
                         'jurisd_local_id', jurisd_local_id,
                         'scientic_code', CASE
-                                          WHEN p_base = 32 AND upper(p_iso)     IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||codebits,16,0),((('{"BR":76, "UY":858}'::jsonb)->(upper_p_iso))::int))
-                                          WHEN p_base = 32 AND upper(p_iso) NOT IN ('BR','UY') THEN vbit_to_baseh('000'||codebits,16,0)
+                                          WHEN p_base = 32 AND upper_p_iso     IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||codebits,16,0),((('{"BR":76, "UY":858}'::jsonb)->(upper_p_iso))::int))
+                                          WHEN p_base = 32 AND upper_p_iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||codebits,16,0)
                                           ELSE NULL
                                          END
                         ))
@@ -982,8 +982,9 @@ CREATE or replace FUNCTION api.osmcode_decode(
               FROM osmc.coverage
               WHERE
                 -- cobertura nacional apenas
-                ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper_p_iso))::int)::bit(10) )
-                AND ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2)
+                -- ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper_p_iso))::int)::bit(10) )
+                -- AND ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2)
+                isolabel_ext = upper_p_iso
                 -- prefixo conforme base
                 AND
                 (
@@ -1006,16 +1007,18 @@ CREATE or replace FUNCTION api.osmcode_decode(
               || (CASE WHEN length(c.code) = length(prefix32) THEN '' ELSE substr(c.code,length(prefix32)+1,length(c.code)) END) ) AS short_code
               FROM osmc.coverage r, LATERAL (SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32)
               WHERE
+              -- somente coberturas do pais
+                  ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper_p_iso))::int)::bit(10) )
+              -- cobertura municipal
+              AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
+              AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,ST_Centroid(v.geom)) ELSE TRUE END
+              AND
               (  prefix32 = substr(c.code,1,5)
               OR prefix32 = substr(c.code,1,4)
               OR prefix32 = substr(c.code,1,3)
               OR prefix32 = substr(c.code,1,2)
               OR prefix32 = substr(c.code,1,1)
               )
-              AND ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper_p_iso))::int)::bit(10) )
-              -- cobertura municipal
-              AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
-              AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,ST_Centroid(v.geom)) ELSE TRUE END
               ORDER BY length(prefix) DESC
               LIMIT 1
             ) t
