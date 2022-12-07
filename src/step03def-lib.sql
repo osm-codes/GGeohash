@@ -1068,6 +1068,8 @@ COMMENT ON FUNCTION api.osmcode_decode_reduced(text,text,int)
   IS 'Decodes OSMcode reduced. Wrap for osmcode_decode.'
 ;
 -- EXPLAIN ANALYZE SELECT api.osmcode_decode_reduced('8HB','CO-Itagui');
+-- EXPLAIN ANALYZE SELECT api.osmcode_decode('9JBBHB','CO',32);
+
 
 ------------------
 -- jurisdiction coverage:

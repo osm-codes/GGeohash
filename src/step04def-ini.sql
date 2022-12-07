@@ -320,11 +320,11 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
         SELECT ST_Centroid(geom) AS geom_centroid, geom
         FROM
         (
-            SELECT (ST_SquareGrid(ST_CharactDiam(geom)*p_fraction, geom)).*
+            SELECT (ST_SquareGrid(ST_CharactDiam(osmc.buffer_geom(g.geom,buffer_type))*p_fraction, osmc.buffer_geom(g.geom,buffer_type))).*
             FROM optim.vw01full_jurisdiction_geom g
             WHERE g.isolabel_ext = p_isolabel_ext
         ) a
-        WHERE ST_Contains((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext),ST_Centroid(geom))
+        WHERE ST_Contains((SELECT osmc.buffer_geom(geom,buffer_type) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext),ST_Centroid(geom))
 
         UNION
 
@@ -346,7 +346,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
     WITH list_ggeohash AS
     (
         SELECT *
-        FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction)
+        FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction,buffer_type)
     )
     SELECT *
     FROM
@@ -449,7 +449,7 @@ SELECT p_isolabel_ext::text, srid, jurisd_base_id, number_cells, cover, cover_sc
 FROM
 (
     SELECT number_cells, cover, split_part(p_isolabel_ext,'-',1) AS iso
-    FROM osmc.generate_cover(p_isolabel_ext,p_fraction)
+    FROM osmc.generate_cover(p_isolabel_ext,p_fraction,buffer_type)
     WHERE number_cells < 32 -- MAX 31 cells
     ORDER BY number_cells DESC
     LIMIT 1
@@ -476,7 +476,7 @@ COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
   IS 'Returns first coverage with less than 32 cells.'
 ;
 -- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');
--- SELECT * FROM osmc.select_cover('BR-SP-Campinas');
+-- SELECT * FROM osmc.select_cover('BR-SP-Campinas',0.5,0);
 
 /*
 ------------------
@@ -549,7 +549,6 @@ $$;
 
 -- rodar no tmux
 psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop(296584);" &> log_cover_sc
-
 
 DROP TABLE osmc.tmp_check_coverage;
 CREATE TABLE osmc.tmp_check_coverage (
