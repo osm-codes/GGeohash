@@ -759,7 +759,7 @@ CREATE or replace FUNCTION api.osmcode_encode_context(
         )
       ELSE 35
       END,
-      952019,grid,u.bbox,u.l0code,76,FALSE,'BR')
+      952019,grid,u.bbox,u.l0code,76,FALSE,p_isolabel_ext)
 
     WHEN 'CO' THEN
 
@@ -778,7 +778,7 @@ CREATE or replace FUNCTION api.osmcode_encode_context(
         )
       ELSE 35
       END,
-      9377,grid,u.bbox,u.l0code,170,FALSE,'CO')
+      9377,grid,u.bbox,u.l0code,170,FALSE,p_isolabel_ext)
 
     WHEN 'UY' THEN
 
@@ -798,7 +798,7 @@ CREATE or replace FUNCTION api.osmcode_encode_context(
         )
       ELSE 35
       END,
-      32721,grid,u.bbox,u.l0code,858,FALSE,'UY')
+      32721,grid,u.bbox,u.l0code,858,FALSE,p_isolabel_ext)
 
     WHEN 'EC' THEN
 
@@ -817,7 +817,7 @@ CREATE or replace FUNCTION api.osmcode_encode_context(
         )
       ELSE 35
       END,
-      32717,grid,u.bbox,u.l0code,218,TRUE,'EC')
+      32717,grid,u.bbox,u.l0code,218,TRUE,p_isolabel_ext)
 
     END
   FROM ( SELECT str_geouri_decode(uri) ) t(latLon),
