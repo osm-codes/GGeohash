@@ -842,32 +842,28 @@ COMMENT ON FUNCTION api.osmcode_encode_context(text,int,int,text)
 -- osmcode decode:
 
 CREATE or replace FUNCTION api.osmcode_decode(
-   p_code text,
-   p_iso  text,
-   p_base int     DEFAULT 32
+   p_code       text, -- e.g.: '645' in 16h1c
+   p_iso        text, -- e.g.: 'BR'
+   p_base       int  DEFAULT 32
 ) RETURNS jsonb AS $f$
   SELECT jsonb_build_object(
       'type', 'FeatureCollection',
       'features',
           (
             SELECT jsonb_agg(
-                ST_AsGeoJSONb(ST_Transform_resilient(v.geom,4326,0.005),8,0,null,
+                ST_AsGeoJSONb(ST_Transform_resilient(v.geom_cell,4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', CASE WHEN p_base = 18 THEN code16h1c ELSE code16h END,
-                        'short_code', short_code,
-                        'area', ST_Area(v.geom),
-                        'side', SQRT(ST_Area(v.geom)),
+                        'area', ST_Area(v.geom_cell),
+                        'side', SQRT(ST_Area(v.geom_cell)),
                         'base', CASE WHEN p_base = 16 THEN 'base16h'
                                      WHEN p_base = 17 THEN 'base16'
                                      WHEN p_base = 18 THEN 'base16h1c'
                                      ELSE                  'base32'
-                                END,
+                                END/*,
                         'jurisd_local_id', jurisd_local_id,
-                        'scientic_code', CASE
-                                          WHEN p_base = 32 AND upper_p_iso     IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||codebits,16,0),s.jurisd_base_id)
-                                          WHEN p_base = 32 AND upper_p_iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||codebits,16,0)
-                                          ELSE NULL
-                                         END
+                        'scientic_code', scientic_code,
+                        'short_code', short_code*/
                         ))
                     )::jsonb) AS gj
             FROM
@@ -879,33 +875,27 @@ CREATE or replace FUNCTION api.osmcode_decode(
                 CASE
                   WHEN p_base = 18
                   THEN
-                      CASE upper(p_iso)
-                        WHEN 'BR' THEN
-                          CASE
-                            -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
-                            WHEN substring(code,1,2) IN ('FL','FT','FS','FA','FB','F8','F9') THEN ('0F')
-                            -- FQ,F4,F5: tr F -> h
-                            WHEN substring(code,1,2) IN ('FQ','F4','F5')                     THEN ('11')
-                            -- FR,F6,F7: tr F -> g
-                            WHEN substring(code,1,2) IN ('FR','F6','F7')                     THEN ('10')
-                          END
+                    CASE
+                      -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
+                      WHEN upper(p_iso) = 'BR' AND substring(code,1,2) IN ('FL','FT','FS','FA','FB','F8','F9') THEN ('0F')
+                      -- FQ,F4,F5: tr F -> h
+                      WHEN upper(p_iso) = 'BR' AND substring(code,1,2) IN ('FQ','F4','F5')                     THEN ('11')
+                      -- FR,F6,F7: tr F -> g
+                      WHEN upper(p_iso) = 'BR' AND substring(code,1,2) IN ('FR','F6','F7')                     THEN ('10')
 
-                        WHEN 'UY' THEN
-                          CASE
-                            -- E0,E1,E2: tr F -> g
-                            WHEN substring(code,1,2) IN ('E0','E1','E2','EJ','EN','EP')      THEN ('10')
-                            -- EE,ED,EF: tr 0 -> j
-                            WHEN substring(code,1,2) IN ('0A','0B','0T')                     THEN ('12')
-                            -- ,,: tr 5 -> h
-                            WHEN substring(code,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F') THEN ('11')
-                          END
-                        ELSE
-                        (
-                          ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
-                            "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
-                            "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
-                            "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(code,1,1))
-                        )
+                      -- E0,E1,E2: tr F -> g
+                      WHEN upper(p_iso) = 'UY' AND substring(code,1,2) IN ('E0','E1','E2','EJ','EN','EP')      THEN ('10')
+                      -- EE,ED,EF: tr 0 -> j
+                      WHEN upper(p_iso) = 'UY' AND substring(code,1,2) IN ('0A','0B','0T')                     THEN ('12')
+                      -- ,,: tr 5 -> h
+                      WHEN upper(p_iso) = 'UY' AND substring(code,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F') THEN ('11')
+                      ELSE
+                      (
+                        ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
+                          "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
+                          "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
+                          "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(code,1,1))
+                      )
                     END || substring(code,2)
                   ELSE code
                 END AS code16h
@@ -920,58 +910,58 @@ CREATE or replace FUNCTION api.osmcode_decode(
                           WHEN p_base IN (16,17,18) THEN substring(codebits from 9) -- 8 bits base16h
                           ELSE                           substring(codebits from 6) -- 5 bits base16h
                           END
-                        ,bbox, CASE WHEN upper_p_iso='EC' THEN TRUE ELSE FALSE END)
+                        ,bbox, CASE WHEN c.upper_p_iso='EC' THEN TRUE ELSE FALSE END)
                     ,false,ST_SRID(geom)
-                    ) AS geom
+                    ) AS geom_cell
               FROM osmc.coverage
               WHERE
                 -- cobertura nacional apenas
-                isolabel_ext = upper_p_iso
+                isolabel_ext = c.upper_p_iso
                 -- prefixo conforme base
                 AND
                 (
                     CASE
-                    WHEN p_base IN (16,17,18)
-                    THEN ( ( (id::bit(64)<<27)::bit(8) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
-                    ELSE ( ( (id::bit(64)<<30)::bit(5) # codebits::bit(5) ) = 0::bit(5) ) -- 1 dígito  base32
+                    WHEN p_base IN (16,17,18) THEN ( ( (id::bit(64)<<27)::bit(8) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+                    ELSE                           ( ( (id::bit(64)<<30)::bit(5) # codebits::bit(5) ) = 0::bit(5) ) -- 1 dígito  base32
                     END
                 )
             ) v
-            -- responsável pelo código curto na grade postal
-            LEFT JOIN LATERAL
-            (
-              SELECT isolabel_ext, (isolabel_ext || '~' ||
-                CASE
-                WHEN p_base IN (16,17,18) THEN vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
-                ELSE                           vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
-                END
-              || (CASE WHEN length(c.code16h) = length(prefix32) THEN '' ELSE substr(c.code16h,length(prefix32)+1,length(c.code16h)) END) ) AS short_code
-              FROM osmc.coverage r, LATERAL (SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32)
-              WHERE
-              -- somente coberturas do pais
-                  ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper_p_iso))::int)::bit(10) )
-              -- cobertura municipal
-              AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
-              AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,ST_Centroid(v.geom)) ELSE TRUE END
-              AND
-              (  prefix32 = substr(c.code16h,1,5)
-              OR prefix32 = substr(c.code16h,1,4)
-              OR prefix32 = substr(c.code16h,1,3)
-              OR prefix32 = substr(c.code16h,1,2)
-              OR prefix32 = substr(c.code16h,1,1)
-              )
-              ORDER BY length(prefix) DESC
-              LIMIT 1
-            ) t
-            ON TRUE
-            -- infos de jurisdiction
-            LEFT JOIN LATERAL
-            (
-              SELECT jurisd_local_id, jurisd_base_id
-              FROM optim.jurisdiction
-              WHERE isolabel_ext = t.isolabel_ext
-            ) s
-            ON TRUE
+            -- responsável por infos do código postal
+            -- LEFT JOIN LATERAL
+            -- (
+            --     SELECT  jurisd_local_id,
+            --             CASE
+            --               WHEN p_base = 32 AND upper_p_iso     IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||codebits,16,0),jurisd_base_id)
+            --               WHEN p_base = 32 AND upper_p_iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||codebits,16,0)
+            --               ELSE NULL
+            --             END AS scientic_code,
+            --             (r.isolabel_ext || '~' ||
+            --       CASE
+            --       WHEN p_base IN (16,17,18) THEN vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
+            --       ELSE                           vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
+            --       END
+            --     || (CASE WHEN length(c.code16h) = length(prefix32) THEN '' ELSE substr(c.code16h,length(prefix32)+1,length(c.code16h)) END) ) AS short_code
+            --     FROM osmc.coverage r
+            --     LEFT JOIN optim.jurisdiction ju
+            --     ON ju.isolabel_ext = r.isolabel_ext
+            --     LEFT JOIN LATERAL (SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32) ON TRUE
+            --     WHERE
+            --     -- somente coberturas do pais
+            --         ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper_p_iso))::int)::bit(10) )
+            --     -- cobertura municipal
+            --     AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
+            --     AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,ST_Centroid(v.geom)) ELSE TRUE END
+            --     AND
+            --     (  prefix32 = substr(c.code16h,1,5)
+            --     OR prefix32 = substr(c.code16h,1,4)
+            --     OR prefix32 = substr(c.code16h,1,3)
+            --     OR prefix32 = substr(c.code16h,1,2)
+            --     OR prefix32 = substr(c.code16h,1,1)
+            --     )
+            --     ORDER BY length(prefix) DESC
+            --     LIMIT 1
+            -- ) t
+            -- ON p_shotcode IS TRUE
 
             WHERE
             CASE WHEN upper_p_iso = 'UY' THEN c.code16h NOT IN ('0EG','10G','12G','00L','12L','0EJ','05H','11H') ELSE TRUE END
@@ -979,11 +969,12 @@ CREATE or replace FUNCTION api.osmcode_decode(
       )
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION api.osmcode_decode(text,text,int)
-  IS 'Decodes OSMcode.'
+  IS 'Decode absolute postal and scientific OSMcode.'
 ;
 -- EXPLAIN ANALYZE SELECT api.osmcode_decode('0','UY',18);
 -- EXPLAIN ANALYZE SELECT api.osmcode_decode('9025NTJ','CO');
 -- EXPLAIN ANALYZE SELECT api.osmcode_decode('1,2,d3,2','CO',32);
+
 
 CREATE or replace FUNCTION api.osmcode_decode_reduced(
    p_code text,
@@ -1004,21 +995,22 @@ CREATE or replace FUNCTION api.osmcode_decode_reduced(
                         'base', 'base32',
                         'jurisd_local_id', jurisd_local_id,
                         'scientic_code', CASE
-                                          WHEN country_iso     IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||codebits,16,0),s.jurisd_base_id)
-                                          WHEN country_iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||codebits,16,0)
-                                          ELSE NULL
+                                          WHEN country_iso IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||codebits,16,0),jurisd_base_id)
+                                          ELSE                                                   vbit_to_baseh('000'||codebits,16,0)
                                          END
                         ))
                     )::jsonb) AS gj
             FROM
             (
-              SELECT isolabel_ext, split_part(isolabel_ext,'-',1) As country_iso, code, baseh_to_vbit(code,32) AS codebits
+              SELECT jurisd_local_id, jurisd_base_id, isolabel_ext, split_part(isolabel_ext,'-',1) As country_iso, code, baseh_to_vbit(code,32) AS codebits
               FROM
               (
-                  SELECT isolabel_ext, vbit_to_baseh(substring(baseh_to_vbit(prefix,16) from 4),32) || upper(substring(p_code,2)) AS code
-                  FROM osmc.coverage
-                  WHERE isolabel_ext = (osmc.str_geocodeiso_decode(p_iso))[1] -- possível usar os 14bits do id na busca
-                      AND ( (id::bit(64)<<27)::bit(5) # baseh_to_vbit(substring(upper(p_code),1,1),32) ) = 0::bit(5)
+                  SELECT jurisd_local_id, jurisd_base_id, co.isolabel_ext, vbit_to_baseh(substring(baseh_to_vbit(prefix,16) from 4),32) || upper(substring(p_code,2)) AS code
+                  FROM osmc.coverage co
+                  LEFT JOIN optim.jurisdiction ju
+                  ON co.isolabel_ext = ju.isolabel_ext
+                  WHERE co.isolabel_ext = (osmc.str_geocodeiso_decode(p_iso))[1] -- possível usar os 14bits do id na busca
+                   AND ( (id::bit(64)<<27)::bit(5) # baseh_to_vbit(substring(upper(p_code),1,1),32) ) = 0::bit(5)
               ) u
             ) c,
             LATERAL
@@ -1029,14 +1021,7 @@ CREATE or replace FUNCTION api.osmcode_decode_reduced(
               WHERE isolabel_ext = c.country_iso
                 -- prefixo conforme base
                 AND ( ( (id::bit(64)<<30)::bit(5) # codebits::bit(5) ) = 0::bit(5) ) -- 1 dígito  base32
-            ) v,
-            -- infos de jurisdiction
-            LATERAL
-            (
-              SELECT jurisd_local_id, jurisd_base_id
-              FROM optim.jurisdiction
-              WHERE isolabel_ext = c.isolabel_ext
-            ) s
+            ) v
 
             WHERE
             CASE WHEN country_iso = 'UY' THEN c.code NOT IN ('0EG','10G','12G','00L','12L','0EJ','05H','11H') ELSE TRUE END
