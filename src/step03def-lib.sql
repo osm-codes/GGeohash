@@ -348,10 +348,10 @@ CREATE or replace FUNCTION osmc.encode(
           (ST_AsGeoJSONb(ST_Transform_resilient(geom_cell,4326,0.005),8,0,null,
               jsonb_strip_nulls(jsonb_build_object(
                   'code', CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END,
-                  'short_code', short_code,
                   'area', ST_Area(geom_cell),
                   'side', SQRT(ST_Area(geom_cell)),
                   'base', base,
+                  'short_code', short_code,
                   'jurisd_local_id', jurisd_local_id,
                   'jurisd_base_id', p_jurisd_base_id,
                   'scientic_code', CASE
@@ -387,12 +387,12 @@ CREATE or replace FUNCTION osmc.encode(
                 ST_AsGeoJSONb(ST_Transform_resilient(geom,4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', upper(ghs2),
-                        'short_code', tt.short_code,
                         'code_subcell', substr(ghs2,length(code2)+1,length(ghs2)),
                         'prefix', code2,
                         'area', ST_Area(geom),
                         'side', SQRT(ST_Area(geom)),
                         'base', base,
+                        'short_code', tt.short_code,
                         'jurisd_base_id', p_jurisd_base_id,
                         'jurisd_local_id', ss.jurisd_local_id
                         ))
@@ -506,8 +506,6 @@ COMMENT ON FUNCTION osmc.encode(geometry(POINT),int,int,int,int,float[],varbit,i
   IS 'Encodes geometry to OSMcode.'
 ;
 
----
-
 CREATE or replace FUNCTION api.osmcode_encode(
   uri    text,
   p_base int DEFAULT 32,
@@ -564,10 +562,198 @@ COMMENT ON FUNCTION api.osmcode_encode(text,int,int)
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:3.461,-76.577');
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:-15.5,-47.8');
 
--- context
-CREATE or replace FUNCTION osmc.encode_context(
+
+CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
   p_geom       geometry(POINT),
-  p_base       int     DEFAULT 32,
+  p_base       int     DEFAULT 16,
+  p_bit_length int     DEFAULT 40,
+  p_srid       int     DEFAULT 9377,
+  p_grid_size  int     DEFAULT 2,
+  p_bbox       float[] DEFAULT array[0.,0.,0.,0.],
+  p_l0code     varbit  DEFAULT b'0',
+  p_jurisd_base_id int DEFAULT 170,
+  p_lonlat     boolean DEFAULT false  -- false: latLon, true: lonLat
+) RETURNS jsonb AS $f$
+    SELECT jsonb_build_object(
+      'type', 'FeatureCollection',
+      'features',
+        (
+          (ST_AsGeoJSONb(ST_Transform_resilient(geom_cell,4326,0.005),8,0,null,
+              jsonb_strip_nulls(jsonb_build_object(
+                  'code', CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END,
+                  'area', ST_Area(geom_cell),
+                  'side', SQRT(ST_Area(geom_cell)),
+                  'base', base
+                  ))
+          )::jsonb) || m.subcells
+        )
+      )
+    FROM
+    (
+      SELECT bit_string,
+      ggeohash.draw_cell_bybox((CASE WHEN p_bit_length = 0 THEN p_bbox ELSE ggeohash.decode_box2(bit_string,p_bbox,p_lonlat) END),false,p_srid) AS geom_cell,
+      CASE WHEN p_base = 17 THEN 'base16'
+           WHEN p_base = 18 THEN 'base16h1c'
+           ELSE                  'base16h'
+      END AS base,
+      upper(vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,16,0)) AS code,
+      p_l0code || bit_string AS codebits
+      FROM ggeohash.encode3(ST_X(p_geom),ST_Y(p_geom),p_bbox,p_bit_length,p_lonlat) r(bit_string)
+    ) c
+    -- responsável por subcélulas
+    LEFT JOIN LATERAL
+    (
+      SELECT
+        CASE
+        WHEN p_grid_size > 0 AND SQRT(ST_Area(c.geom_cell)) > 1
+        THEN
+          (
+            SELECT jsonb_agg(
+                ST_AsGeoJSONb(ST_Transform_resilient(geom,4326,0.005),8,0,null,
+                    jsonb_strip_nulls(jsonb_build_object(
+                        'code', upper(ghs2),
+                        'code_subcell', substr(ghs2,length(code2)+1,length(ghs2)),
+                        'prefix', code2,
+                        'area', ST_Area(geom),
+                        'side', SQRT(ST_Area(geom)),
+                        'base', base
+                        ))
+                    )::jsonb)
+              FROM
+             (
+              SELECT geom, ghs,
+                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(ghs,p_jurisd_base_id) ELSE ghs END AS ghs2,
+                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END AS code2
+                FROM osmc.ggeohash_GeomsFromVarbit(
+                      c.bit_string,p_l0code,false,p_srid,16,
+                      CASE
+                        WHEN p_grid_size % 2 = 1 THEN p_grid_size - 1
+                        ELSE p_grid_size
+                      END,
+                      p_bbox,
+                      p_lonlat,
+                      CASE WHEN p_grid_size % 2 = 1 THEN TRUE ELSE FALSE END
+                      )
+             ) xx
+          )
+        ELSE '[]'::jsonb
+        END AS subcells
+    ) m
+    ON TRUE
+
+    WHERE
+    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN (
+    '0EG','10G','12G','00L','12L','0EJ','05H','11H'
+    ) ELSE TRUE  END
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.osmcode_encode_scientific(geometry(POINT),int,int,int,int,float[],varbit,int,boolean)
+  IS 'Encodes geometry to OSMcode.'
+;
+
+CREATE or replace FUNCTION api.osmcode_encode_scientific(
+  uri    text,
+  p_base int DEFAULT 16,
+  grid   int DEFAULT 0,
+  p_isolabel_ext text DEFAULT NULL
+) RETURNS jsonb AS $wrap$
+  SELECT
+    -- CASE split_part(p_isolabel_ext,'-',1)
+    CASE u.isolabel_ext
+    WHEN 'BR' THEN
+
+      osmc.osmcode_encode_scientific(ST_Transform(u.geom,952019),p_base,
+      CASE
+      WHEN latLon[4] IS NOT NULL
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base IN (16,18)           THEN   x
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+        )
+      ELSE 35
+      END,
+      952019,grid,u.bbox,u.l0code,76,FALSE)
+
+    WHEN 'CO' THEN
+
+      osmc.osmcode_encode_scientific(ST_Transform(u.geom,9377),p_base,
+      CASE
+      WHEN latLon[4] IS NOT NULL
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base = 16       AND x > 4 THEN   x-4
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+        )
+      ELSE 35
+      END,
+      9377,grid,u.bbox,u.l0code,170,FALSE)
+
+    WHEN 'UY' THEN
+
+      osmc.osmcode_encode_scientific(ST_Transform(u.geom,32721),p_base,
+      CASE
+      WHEN latLon[4] IS NOT NULL
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base = 17       AND x > 6 THEN ((x-6)/4)*4
+          WHEN p_base IN (16,18) AND x > 6 THEN   x-6
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+        )
+      ELSE 35
+      END,
+      32721,grid,u.bbox,u.l0code,858,FALSE)
+
+    WHEN 'EC' THEN
+
+      osmc.osmcode_encode_scientific(ST_Transform(u.geom,32717),p_base,
+      CASE
+      WHEN latLon[4] IS NOT NULL
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base = 16       AND x > 5 THEN   x-5
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+        )
+      ELSE 35
+      END,
+      32717,grid,u.bbox,u.l0code,218,TRUE)
+
+    END
+  FROM ( SELECT str_geouri_decode(uri) ) t(latLon),
+  LATERAL
+  (
+    SELECT ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326) AS geom, bbox,
+        (id::bit(64)<<27)::bit(8) AS l0code, -- 2 dígito  base16h
+        isolabel_ext
+    FROM osmc.coverage
+    WHERE
+        ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2) -- cobertura nacional apenas
+        -- AND ( CASE WHEN p_isolabel_ext IS NOT NULL THEN isolabel_ext = p_isolabel_ext END )
+        AND ST_Contains(geom_srid4326,ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326))
+  ) u
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION api.osmcode_encode_scientific(text,int,int,text)
+  IS 'Encodes Geo URI to OSMcode. Wrap for osmcode_encode_context(geometry)'
+;
+-- EXPLAIN ANALYZE SELECT api.osmcode_encode_scientific('geo:-15.5,-47.8');
+
+
+CREATE or replace FUNCTION osmc.encode_postal(
+  p_geom       geometry(POINT),
   p_bit_length int     DEFAULT 40,
   p_srid       int     DEFAULT 9377,
   p_grid_size  int     DEFAULT 32,
@@ -583,7 +769,7 @@ CREATE or replace FUNCTION osmc.encode_context(
         (
           (ST_AsGeoJSONb(ST_Transform_resilient(geom_cell,4326,0.005),8,0,null,
               jsonb_strip_nulls(jsonb_build_object(
-                  'code', CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END,
+                  'code', code,
                   'short_code', short_code,
                   'area', ST_Area(geom_cell),
                   'side', SQRT(ST_Area(geom_cell)),
@@ -591,8 +777,8 @@ CREATE or replace FUNCTION osmc.encode_context(
                   'jurisd_local_id', jurisd_local_id,
                   'jurisd_base_id', p_jurisd_base_id,
                   'scientic_code', CASE
-                                    WHEN p_base = 32 AND p_jurisd_base_id     IN (76,868) THEN osmc.encode_16h1c(vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16,0),p_jurisd_base_id)
-                                    WHEN p_base = 32 AND p_jurisd_base_id NOT IN (76,868) THEN vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16,0)
+                                    WHEN p_jurisd_base_id     IN (76,868) THEN osmc.encode_16h1c(vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16,0),p_jurisd_base_id)
+                                    WHEN p_jurisd_base_id NOT IN (76,868) THEN vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16,0)
                                     ELSE NULL END
                   ))
           )::jsonb) || m.subcells
@@ -602,12 +788,8 @@ CREATE or replace FUNCTION osmc.encode_context(
     (
       SELECT bit_string,
       ggeohash.draw_cell_bybox((CASE WHEN p_bit_length = 0 THEN p_bbox ELSE ggeohash.decode_box2(bit_string,p_bbox,p_lonlat) END),false,p_srid) AS geom_cell,
-      CASE WHEN p_base = 16 THEN 'base16h'
-           WHEN p_base = 17 THEN 'base16'
-           WHEN p_base = 18 THEN 'base16h1c'
-           ELSE                  'base32'
-      END AS base,
-      upper(vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END,0)) AS code,
+      'base32' AS base,
+      upper(vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,32,0)) AS code,
       p_l0code || bit_string AS codebits
       FROM ggeohash.encode3(ST_X(p_geom),ST_Y(p_geom),p_bbox,p_bit_length,p_lonlat) r(bit_string)
     ) c
@@ -635,11 +817,9 @@ CREATE or replace FUNCTION osmc.encode_context(
                     )::jsonb)
               FROM
              (
-              SELECT geom, ghs,
-                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(ghs,p_jurisd_base_id) ELSE ghs END AS ghs2,
-                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END AS code2
+              SELECT geom, ghs, ghs AS ghs2, code AS code2
                 FROM osmc.ggeohash_GeomsFromVarbit(
-                      c.bit_string,p_l0code,false,p_srid,CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END,
+                      c.bit_string,p_l0code,false,p_srid,32,
                       CASE
                         WHEN p_grid_size % 2 = 1 THEN p_grid_size - 1
                         ELSE p_grid_size
@@ -652,12 +832,7 @@ CREATE or replace FUNCTION osmc.encode_context(
               -- responsável pelo código curto na grade postal das subcélulas
               LEFT JOIN LATERAL
               (
-                SELECT isolabel_ext, (isolabel_ext || '~' ||
-                  CASE
-                  WHEN p_base IN (16,17,18)
-                  THEN vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
-                  ELSE vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
-                  END
+                SELECT isolabel_ext, (isolabel_ext || '~' || vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
                 || (CASE WHEN length(xx.ghs) = length(prefix32) THEN '' ELSE substr(xx.ghs,length(prefix32),length(xx.ghs)) END) ) AS short_code
                 FROM osmc.coverage rr, LATERAL ( SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32)
                 WHERE
@@ -692,12 +867,7 @@ CREATE or replace FUNCTION osmc.encode_context(
     -- responsável pelo código curto na grade postal
     LEFT JOIN LATERAL
     (
-      SELECT isolabel_ext, (isolabel_ext || '~' ||
-        CASE
-        WHEN p_base IN (16,17,18)
-        THEN vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
-        ELSE vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
-        END
+      SELECT isolabel_ext, (isolabel_ext || '~' || vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
       || (CASE WHEN length(c.code) = length(prefix32) THEN '' ELSE substr(c.code,length(prefix32)+1,length(c.code)) END) ) AS short_code
       FROM osmc.coverage r, LATERAL ( SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32)
       WHERE
@@ -730,13 +900,35 @@ CREATE or replace FUNCTION osmc.encode_context(
     '0EG','10G','12G','00L','12L','0EJ','05H','11H'
     ) ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_context(geometry(POINT),int,int,int,int,float[],varbit,int,boolean,text)
-  IS 'Encodes geometry to OSMcode. Using context.'
+COMMENT ON FUNCTION osmc.encode_postal(geometry(POINT),int,int,int,float[],varbit,int,boolean,text)
+  IS 'Encodes geometry to Postal OSMcode.'
 ;
 
-CREATE or replace FUNCTION api.osmcode_encode_context(
+CREATE or replace FUNCTION osmc.encode_postal_br(
+  p_geom         geometry(POINT),
+  p_uncertainty  int  DEFAULT -1,
+  p_grid_size    int  DEFAULT 0,
+  p_isolabel_ext text DEFAULT NULL
+) RETURNS jsonb AS $f$
+    SELECT osmc.encode_postal(p_geom,
+      CASE
+      WHEN p_uncertainty > -1 THEN ((osmc.uncertain_base16h(p_uncertainty))/5)*5
+      ELSE 35
+      END,
+      952019,p_grid_size,u.bbox,u.l0code,76,FALSE,p_isolabel_ext)
+  FROM
+  (
+    SELECT bbox, (id::bit(64)<<30)::bit(5) AS l0code -- 1 dígito base32
+    FROM osmc.coverage
+    WHERE isolabel_ext = 'BR' AND ST_Contains(geom,p_geom)
+  ) u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_postal_br(geometry(POINT),int,int,text)
+  IS 'Encodes geometry to Postal OSMcode.'
+;
+
+CREATE or replace FUNCTION api.osmcode_encode_postal(
   uri    text,
-  p_base int DEFAULT 32,
   grid   int DEFAULT 0,
   p_isolabel_ext text DEFAULT NULL
 ) RETURNS jsonb AS $wrap$
@@ -744,34 +936,24 @@ CREATE or replace FUNCTION api.osmcode_encode_context(
     CASE split_part(p_isolabel_ext,'-',1)
     WHEN 'BR' THEN
 
-      osmc.encode_context(ST_Transform(u.geom,952019),p_base,
-      CASE
-      WHEN latLon[4] IS NOT NULL
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN p_base IN (32)              THEN  (x/5)*5
-          WHEN p_base IN (16,18)           THEN   x
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
-        )
-      ELSE 35
-      END,
-      952019,grid,u.bbox,u.l0code,76,FALSE,p_isolabel_ext)
+      osmc.encode_postal_br(ST_Transform(u.geom,952019),latLon[4]::int,grid,p_isolabel_ext)
+      -- osmc.encode_postal(ST_Transform(u.geom,952019),
+      -- CASE
+      -- WHEN latLon[4] IS NOT NULL THEN ((osmc.uncertain_base16h(latLon[4]::int))/5)*5
+      -- ELSE 35
+      -- END,
+      -- 952019,grid,u.bbox,u.l0code,76,FALSE,p_isolabel_ext)
 
     WHEN 'CO' THEN
 
-      osmc.encode_context(ST_Transform(u.geom,9377),p_base,
+      osmc.encode_postal(ST_Transform(u.geom,9377),
       CASE
       WHEN latLon[4] IS NOT NULL
       THEN
       (
         SELECT
         CASE
-          WHEN p_base = 32       AND x > 4 THEN ((x-4)/5)*5
-          WHEN p_base = 16       AND x > 4 THEN   x-4
+          WHEN x > 4 THEN ((x-4)/5)*5
           ELSE 0
         END
         FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
@@ -782,16 +964,14 @@ CREATE or replace FUNCTION api.osmcode_encode_context(
 
     WHEN 'UY' THEN
 
-      osmc.encode_context(ST_Transform(u.geom,32721),p_base,
+      osmc.encode_postal(ST_Transform(u.geom,32721),
       CASE
       WHEN latLon[4] IS NOT NULL
       THEN
       (
         SELECT
         CASE
-          WHEN p_base = 32       AND x > 6 THEN ((x-6)/5)*5
-          WHEN p_base = 17       AND x > 6 THEN ((x-6)/4)*4
-          WHEN p_base IN (16,18) AND x > 6 THEN   x-6
+          WHEN x > 6 THEN ((x-6)/5)*5
           ELSE 0
         END
         FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
@@ -802,15 +982,14 @@ CREATE or replace FUNCTION api.osmcode_encode_context(
 
     WHEN 'EC' THEN
 
-      osmc.encode_context(ST_Transform(u.geom,32717),p_base,
+      osmc.encode_postal(ST_Transform(u.geom,32717),
       CASE
       WHEN latLon[4] IS NOT NULL
       THEN
       (
         SELECT
         CASE
-          WHEN p_base = 32       AND x > 5 THEN ((x-5)/5)*5
-          WHEN p_base = 16       AND x > 5 THEN   x-5
+          WHEN x > 5 THEN ((x-5)/5)*5
           ELSE 0
         END
         FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
@@ -823,52 +1002,44 @@ CREATE or replace FUNCTION api.osmcode_encode_context(
   FROM ( SELECT str_geouri_decode(uri) ) t(latLon),
   LATERAL
   (
-    SELECT ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326) AS geom, bbox,
-        CASE
-        WHEN p_base IN (16,17,18) THEN (id::bit(64)<<27)::bit(8) -- 2 dígito  base16h
-        ELSE                           (id::bit(64)<<30)::bit(5) -- 1 dígito  base32
-        END AS l0code
+    SELECT ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326) AS geom, bbox, (id::bit(64)<<30)::bit(5) AS l0code -- 1 dígito base32
     FROM osmc.coverage
     WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1) AND ST_Contains(geom_srid4326,ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326))
   ) u
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION api.osmcode_encode_context(text,int,int,text)
-  IS 'Encodes Geo URI to OSMcode using context. Wrap for osmcode_encode_context(geometry)'
+COMMENT ON FUNCTION api.osmcode_encode_postal(text,int,text)
+  IS 'Encodes Geo URI to Postal OSMcode. Wrap for osmcode_encode_postal.'
 ;
--- EXPLAIN ANALYZE SELECT api.osmcode_encode_context('geo:-15.5,-47.8',32,0,'BR-GO-Planaltina');
+-- EXPLAIN ANALYZE SELECT api.osmcode_encode_postal('geo:-15.5,-47.8',0,'BR-GO-Planaltina');
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:-15.5,-47.8',32,0);
 
 ------------------
 -- osmcode decode:
 
-CREATE or replace FUNCTION api.osmcode_decode(
+CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
    p_code       text, -- e.g.: '645' in 16h1c
    p_iso        text, -- e.g.: 'BR'
-   p_base       int  DEFAULT 32
+   p_base       int  DEFAULT 16
 ) RETURNS jsonb AS $f$
   SELECT jsonb_build_object(
       'type', 'FeatureCollection',
       'features',
           (
             SELECT jsonb_agg(
-                ST_AsGeoJSONb(ST_Transform_resilient(v.geom_cell,4326,0.005),8,0,null,
+                ST_AsGeoJSONb(ST_Transform_resilient(v.geom,4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', CASE WHEN p_base = 18 THEN code16h1c ELSE code16h END,
-                        'area', ST_Area(v.geom_cell),
-                        'side', SQRT(ST_Area(v.geom_cell)),
-                        'base', CASE WHEN p_base = 16 THEN 'base16h'
-                                     WHEN p_base = 17 THEN 'base16'
+                        'area', ST_Area(v.geom),
+                        'side', SQRT(ST_Area(v.geom)),
+                        'base', CASE WHEN p_base = 17 THEN 'base16'
                                      WHEN p_base = 18 THEN 'base16h1c'
-                                     ELSE                  'base32'
-                                END/*,
-                        'jurisd_local_id', jurisd_local_id,
-                        'scientic_code', scientic_code,
-                        'short_code', short_code*/
+                                     ELSE                  'base16h'
+                                END
                         ))
                     )::jsonb) AS gj
             FROM
             (
-              SELECT DISTINCT upper(p_iso) AS upper_p_iso, code16h, code16h1c, baseh_to_vbit(code16h,CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END) AS codebits
+              SELECT DISTINCT upper(p_iso) AS upper_p_iso, code16h, code16h1c, baseh_to_vbit(code16h,16) AS codebits
               FROM
               (
                 SELECT code AS code16h1c,
@@ -906,80 +1077,131 @@ CREATE or replace FUNCTION api.osmcode_decode(
             (
               SELECT ggeohash.draw_cell_bybox(
                         ggeohash.decode_box2(
-                          CASE
-                          WHEN p_base IN (16,17,18) THEN substring(codebits from 9) -- 8 bits base16h
-                          ELSE                           substring(codebits from 6) -- 5 bits base16h
-                          END
-                        ,bbox, CASE WHEN c.upper_p_iso='EC' THEN TRUE ELSE FALSE END)
+                         substring(codebits from 9) -- 8 bits base16h
+                         ,bbox, CASE WHEN c.upper_p_iso='EC' THEN TRUE ELSE FALSE END)
                     ,false,ST_SRID(geom)
-                    ) AS geom_cell
+                    ) AS geom
               FROM osmc.coverage
-              WHERE
-                -- cobertura nacional apenas
-                isolabel_ext = c.upper_p_iso
-                -- prefixo conforme base
-                AND
-                (
-                    CASE
-                    WHEN p_base IN (16,17,18) THEN ( ( (id::bit(64)<<27)::bit(8) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
-                    ELSE                           ( ( (id::bit(64)<<30)::bit(5) # codebits::bit(5) ) = 0::bit(5) ) -- 1 dígito  base32
-                    END
-                )
+              WHERE isolabel_ext = c.upper_p_iso -- cobertura nacional apenas
+                AND ( ( (id::bit(64)<<27)::bit(8) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h, prefixo conforme base
             ) v
-            -- responsável por infos do código postal
-            -- LEFT JOIN LATERAL
-            -- (
-            --     SELECT  jurisd_local_id,
-            --             CASE
-            --               WHEN p_base = 32 AND upper_p_iso     IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||codebits,16,0),jurisd_base_id)
-            --               WHEN p_base = 32 AND upper_p_iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||codebits,16,0)
-            --               ELSE NULL
-            --             END AS scientic_code,
-            --             (r.isolabel_ext || '~' ||
-            --       CASE
-            --       WHEN p_base IN (16,17,18) THEN vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
-            --       ELSE                           vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
-            --       END
-            --     || (CASE WHEN length(c.code16h) = length(prefix32) THEN '' ELSE substr(c.code16h,length(prefix32)+1,length(c.code16h)) END) ) AS short_code
-            --     FROM osmc.coverage r
-            --     LEFT JOIN optim.jurisdiction ju
-            --     ON ju.isolabel_ext = r.isolabel_ext
-            --     LEFT JOIN LATERAL (SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32) ON TRUE
-            --     WHERE
-            --     -- somente coberturas do pais
-            --         ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper_p_iso))::int)::bit(10) )
-            --     -- cobertura municipal
-            --     AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
-            --     AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,ST_Centroid(v.geom)) ELSE TRUE END
-            --     AND
-            --     (  prefix32 = substr(c.code16h,1,5)
-            --     OR prefix32 = substr(c.code16h,1,4)
-            --     OR prefix32 = substr(c.code16h,1,3)
-            --     OR prefix32 = substr(c.code16h,1,2)
-            --     OR prefix32 = substr(c.code16h,1,1)
-            --     )
-            --     ORDER BY length(prefix) DESC
-            --     LIMIT 1
-            -- ) t
-            -- ON p_shotcode IS TRUE
 
             WHERE
             CASE WHEN upper_p_iso = 'UY' THEN c.code16h NOT IN ('0EG','10G','12G','00L','12L','0EJ','05H','11H') ELSE TRUE END
           )
       )
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION api.osmcode_decode(text,text,int)
-  IS 'Decode absolute postal and scientific OSMcode.'
+COMMENT ON FUNCTION api.osmcode_decode_scientific_absolute(text,text,int)
+  IS 'Decode absolute scientific OSMcode.'
 ;
--- EXPLAIN ANALYZE SELECT api.osmcode_decode('0','UY',18);
--- EXPLAIN ANALYZE SELECT api.osmcode_decode('9025NTJ','CO');
--- EXPLAIN ANALYZE SELECT api.osmcode_decode('1,2,d3,2','CO',32);
+-- EXPLAIN ANALYZE SELECT api.osmcode_decode_scientific_absolute('D1A','BR',18);
 
+CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
+   p_code      text,
+   p_base      int  DEFAULT 16,
+   p_separator text DEFAULT '\+'
+) RETURNS jsonb AS $f$
+  SELECT api.osmcode_decode_scientific_absolute(u[2],u[1],p_base)
+  FROM regexp_split_to_array(p_code,p_separator) u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION api.osmcode_decode_scientific_absolute(text,int)
+  IS 'Decode Scientific OSMcode. Wrap for osmcode_decode_scientific_absolute.'
+;
+-- EXPLAIN ANALYZE SELECT api.osmcode_decode_scientific_absolute('BR+D1A',18);
 
-CREATE or replace FUNCTION api.osmcode_decode_reduced(
+CREATE or replace FUNCTION api.osmcode_decode_postal_absolute(
+   p_code       text, -- e.g.: '645' in 16h1c
+   p_iso        text  -- e.g.: 'BR'
+) RETURNS jsonb AS $f$
+  SELECT jsonb_build_object(
+      'type', 'FeatureCollection',
+      'features',
+          (
+            SELECT jsonb_agg(
+                ST_AsGeoJSONb(ST_Transform_resilient(v.geom,4326,0.005),8,0,null,
+                    jsonb_strip_nulls(jsonb_build_object(
+                        'code', code,
+                        'area', ST_Area(v.geom),
+                        'side', SQRT(ST_Area(v.geom)),
+                        'base', 'base32',
+                        'jurisd_local_id', jurisd_local_id,
+                        'scientic_code', scientic_code,
+                        'short_code', short_code
+                        ))
+                    )::jsonb) AS gj
+            FROM
+            (
+              SELECT DISTINCT upper(p_iso) AS upper_p_iso, code, baseh_to_vbit(code,32) AS codebits
+              FROM regexp_split_to_table(upper(p_code),',') code
+            ) c,
+            LATERAL
+            (
+              SELECT ggeohash.draw_cell_bybox(
+                        ggeohash.decode_box2(
+                          substring(codebits from 6) -- 5 bits base16h
+                        ,bbox, CASE WHEN c.upper_p_iso='EC' THEN TRUE ELSE FALSE END)
+                    ,false,ST_SRID(geom)
+                    ) AS geom
+              FROM osmc.coverage
+              WHERE isolabel_ext = c.upper_p_iso -- cobertura nacional apenas
+                AND ( ( (id::bit(64)<<30)::bit(5) # codebits::bit(5) ) = 0::bit(5) ) -- 1 dígito  base32, prefixo conforme base
+            ) v
+            -- responsável por infos do código postal
+            LEFT JOIN LATERAL
+            (
+                SELECT  jurisd_local_id,
+                        CASE
+                          WHEN upper_p_iso     IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||codebits,16,0),jurisd_base_id)
+                          WHEN upper_p_iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||codebits,16,0)
+                          ELSE NULL
+                        END AS scientic_code,
+                        (r.isolabel_ext || '~' || vbit_to_baseh( (id::bit(64)<<27)::bit(5)    ,32)
+                || (CASE WHEN length(c.code) = length(prefix32) THEN '' ELSE substr(c.code,length(prefix32)+1,length(c.code)) END) ) AS short_code
+                FROM osmc.coverage r
+                LEFT JOIN optim.jurisdiction ju
+                ON ju.isolabel_ext = r.isolabel_ext
+                LEFT JOIN LATERAL (SELECT vbit_to_baseh( substring(baseh_to_vbit(prefix,16) from 4),32)) n(prefix32) ON TRUE
+                WHERE
+                -- somente coberturas do pais
+                    ( (id::bit(64))::bit(10) = jurisd_base_id::bit(10) )
+                AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- cobertura municipal
+                AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,ST_Centroid(v.geom)) ELSE TRUE END
+                AND
+                (  prefix32 = substr(c.code,1,5)
+                OR prefix32 = substr(c.code,1,4)
+                OR prefix32 = substr(c.code,1,3)
+                OR prefix32 = substr(c.code,1,2)
+                OR prefix32 = substr(c.code,1,1)
+                )
+                ORDER BY length(prefix) DESC
+                LIMIT 1
+            ) t
+            ON TRUE
+
+            WHERE
+            CASE WHEN upper_p_iso = 'UY' THEN c.code NOT IN ('0EG','10G','12G','00L','12L','0EJ','05H','11H') ELSE TRUE END
+          )
+      )
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION api.osmcode_decode_postal_absolute(text,text)
+  IS 'Decode absolute postal OSMcode.'
+;
+-- EXPLAIN ANALYZE SELECT api.osmcode_decode_postal_absolute('9025NTJ','CO');
+
+CREATE or replace FUNCTION api.osmcode_decode_postal_absolute(
+   p_code text
+) RETURNS jsonb AS $f$
+  SELECT api.osmcode_decode_postal_absolute(u[2],u[1])
+  FROM regexp_split_to_array(p_code,'~') u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION api.osmcode_decode_postal_absolute(text)
+  IS 'Decode Postal OSMcode. Wrap for osmcode_decode_postal_absolute.'
+;
+-- EXPLAIN ANALYZE SELECT api.osmcode_decode_postal_absolute('CO~9025NTJ');
+
+CREATE or replace FUNCTION api.osmcode_decode_postal(
    p_code text,
-   p_iso  text,
-   p_base int  DEFAULT 32
+   p_iso  text
 ) RETURNS jsonb AS $f$
   SELECT jsonb_build_object(
       'type', 'FeatureCollection',
@@ -1028,12 +1250,22 @@ CREATE or replace FUNCTION api.osmcode_decode_reduced(
           )
       )
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION api.osmcode_decode_reduced(text,text,int)
-  IS 'Decodes OSMcode reduced. Wrap for osmcode_decode.'
+COMMENT ON FUNCTION api.osmcode_decode_postal(text,text)
+  IS 'Decode Postal OSMcode.'
 ;
--- EXPLAIN ANALYZE SELECT api.osmcode_decode_reduced('8HB','CO-Itagui');
+-- EXPLAIN ANALYZE SELECT api.osmcode_decode_postal('8HB','CO-Itagui');
 -- EXPLAIN ANALYZE SELECT api.osmcode_decode('9JBBHB','CO',32);
 
+CREATE or replace FUNCTION api.osmcode_decode_postal(
+   p_code text
+) RETURNS jsonb AS $f$
+  SELECT api.osmcode_decode_postal(u[2],u[1])
+  FROM regexp_split_to_array(p_code,'~') u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION api.osmcode_decode_postal(text)
+  IS 'Decode Postal OSMcode. Wrap for osmcode_decode_postal.'
+;
+-- EXPLAIN ANALYZE SELECT api.osmcode_decode_postal('CO-Itagui~8HB');
 
 ------------------
 -- jurisdiction coverage:
