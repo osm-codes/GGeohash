@@ -212,13 +212,10 @@ CREATE or replace FUNCTION osmc.ggeohash_GeomsFromVarbit(
   p_base      int     DEFAULT 16,
   p_grid_size int     DEFAULT 2,
   p_bbox      float[] DEFAULT array[0.,0.,0.,0.],
-  p_lonlat    boolean DEFAULT false,  -- false: latLon, true: lonLat
-  p_centroid  boolean DEFAULT false
+  p_lonlat    boolean DEFAULT false  -- false: latLon, true: lonLat
 ) RETURNS TABLE(ghs text, geom geometry) AS $f$
   SELECT vbit_to_baseh(p_l0code || p_code || x,p_base,0), 
-      CASE WHEN p_centroid THEN ST_Centroid(ggeohash.draw_cell_bybox(ggeohash.decode_box2(p_code || x,p_bbox,p_lonlat),p_translate,p_srid))
-           ELSE ggeohash.draw_cell_bybox(ggeohash.decode_box2(p_code || x,p_bbox,p_lonlat),p_translate,p_srid)
-      END
+         ggeohash.draw_cell_bybox(ggeohash.decode_box2(p_code || x,p_bbox,p_lonlat),p_translate,p_srid)
   FROM
   unnest(
   CASE
@@ -384,7 +381,7 @@ CREATE or replace FUNCTION osmc.encode(
         THEN
           (
             SELECT jsonb_agg(
-                ST_AsGeoJSONb(ST_Transform_resilient(geom,4326,0.005),8,0,null,
+                ST_AsGeoJSONb(ST_Transform_resilient((CASE WHEN p_grid_size % 2 = 1 THEN ST_Centroid(geom) ELSE geom END),4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', upper(ghs2),
                         'code_subcell', substr(ghs2,length(code2)+1,length(ghs2)),
@@ -409,8 +406,7 @@ CREATE or replace FUNCTION osmc.encode(
                         ELSE p_grid_size
                       END,
                       p_bbox,
-                      p_lonlat,
-                      CASE WHEN p_grid_size % 2 = 1 THEN TRUE ELSE FALSE END
+                      p_lonlat
                       )
              ) xx
               -- responsável pelo código curto na grade postal das subcélulas
@@ -609,7 +605,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
         THEN
           (
             SELECT jsonb_agg(
-                ST_AsGeoJSONb(ST_Transform_resilient(geom,4326,0.005),8,0,null,
+                ST_AsGeoJSONb(ST_Transform_resilient((CASE WHEN p_grid_size % 2 = 1 THEN ST_Centroid(geom) ELSE geom END),4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', upper(ghs2),
                         'code_subcell', substr(ghs2,length(code2)+1,length(ghs2)),
@@ -631,8 +627,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
                         ELSE p_grid_size
                       END,
                       p_bbox,
-                      p_lonlat,
-                      CASE WHEN p_grid_size % 2 = 1 THEN TRUE ELSE FALSE END
+                      p_lonlat
                       )
              ) xx
           )
@@ -802,7 +797,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
         THEN
           (
             SELECT jsonb_agg(
-                ST_AsGeoJSONb(ST_Transform_resilient(geom,4326,0.005),8,0,null,
+                ST_AsGeoJSONb(ST_Transform_resilient((CASE WHEN p_grid_size % 2 = 1 THEN ST_Centroid(geom) ELSE geom END),4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', upper(ghs2),
                         'short_code', tt.short_code,
@@ -825,8 +820,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
                         ELSE p_grid_size
                       END,
                       p_bbox,
-                      p_lonlat,
-                      CASE WHEN p_grid_size % 2 = 1 THEN TRUE ELSE FALSE END
+                      p_lonlat
                       )
              ) xx
               -- responsável pelo código curto na grade postal das subcélulas
