@@ -130,54 +130,54 @@ COMMENT ON FUNCTION osmc.xy_to_quadrant(int[])
 ------------------
 -- Uncertain level defaults:
 
-CREATE or replace FUNCTION osmc.uncertain_base16h(u int) RETURNS int AS $f$
+CREATE or replace FUNCTION osmc.uncertain_base16h(u float) RETURNS int AS $f$
   -- GeoURI's uncertainty value "is the radius of the disk that represents uncertainty geometrically"
   SELECT CASE -- discretization by "snap to size-levels bits"
-    WHEN s <       1 THEN 40
-    WHEN s <       2 THEN 39
-    WHEN s <       3 THEN 38
-    WHEN s <       4 THEN 37
-    WHEN s <       6 THEN 36
-    WHEN s <       8 THEN 35
-    WHEN s <      11 THEN 34
-    WHEN s <      16 THEN 33
-    WHEN s <      23 THEN 32
-    WHEN s <      32 THEN 31
-    WHEN s <      45 THEN 30
-    WHEN s <      64 THEN 29
-    WHEN s <      91 THEN 28
-    WHEN s <     128 THEN 27
-    WHEN s <     181 THEN 26
-    WHEN s <     256 THEN 25
-    WHEN s <     362 THEN 24
-    WHEN s <     512 THEN 23
-    WHEN s <     724 THEN 22
-    WHEN s <    1024 THEN 21
-    WHEN s <    1448 THEN 20
-    WHEN s <    2048 THEN 19
-    WHEN s <    2896 THEN 18
-    WHEN s <    4096 THEN 17
-    WHEN s <    5793 THEN 16
-    WHEN s <    8192 THEN 15
-    WHEN s <   11585 THEN 14
-    WHEN s <   16384 THEN 13
-    WHEN s <   23170 THEN 12
-    WHEN s <   32768 THEN 11
-    WHEN s <   46341 THEN 10
-    WHEN s <   65536 THEN  9
-    WHEN s <   92682 THEN  8
-    WHEN s <  131072 THEN  7
-    WHEN s <  185364 THEN  6
-    WHEN s <  262144 THEN  5
-    WHEN s <  370728 THEN  4
-    WHEN s <  524288 THEN  3
-    WHEN s <  741455 THEN  2
-    WHEN s < 1048576 THEN  1
-    ELSE                   0
+    WHEN s < 1.2 THEN 40
+    WHEN s < 1.7 THEN 39
+    WHEN s < 2.4 THEN 38
+    WHEN s < 3.4 THEN 37
+    WHEN s < 4.8 THEN 36
+    WHEN s < 6.8 THEN 35
+    WHEN s < 9.7 THEN 34
+    WHEN s < 13.7 THEN 33
+    WHEN s < 19.3 THEN 32
+    WHEN s < 27 THEN 31
+    WHEN s < 39 THEN 30
+    WHEN s < 55 THEN 29
+    WHEN s < 77 THEN 28
+    WHEN s < 109 THEN 27
+    WHEN s < 155 THEN 26
+    WHEN s < 219 THEN 25
+    WHEN s < 309 THEN 24
+    WHEN s < 437 THEN 23
+    WHEN s < 618 THEN 22
+    WHEN s < 874 THEN 21
+    WHEN s < 1236 THEN 20
+    WHEN s < 1748 THEN 19
+    WHEN s < 2472 THEN 18
+    WHEN s < 3496 THEN 17
+    WHEN s < 4944 THEN 16
+    WHEN s < 6992 THEN 15
+    WHEN s < 9889 THEN 14
+    WHEN s < 13985 THEN 13
+    WHEN s < 19777 THEN 12
+    WHEN s < 27969 THEN 11
+    WHEN s < 39554 THEN 10
+    WHEN s < 55938 THEN 9
+    WHEN s < 79109 THEN 8
+    WHEN s < 111877 THEN 7
+    WHEN s < 158218 THEN 6
+    WHEN s < 223754 THEN 5
+    WHEN s < 316436 THEN 4
+    WHEN s < 447508 THEN 3
+    WHEN s < 632872 THEN 2
+    WHEN s < 895016 THEN 1
+    ELSE 0
     END
   FROM (SELECT u*2) t(s)
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.uncertain_base16h(int)
+COMMENT ON FUNCTION osmc.uncertain_base16h(float)
   IS 'Uncertain base16h, base32 and base16'
 ;
 
