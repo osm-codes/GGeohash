@@ -175,7 +175,7 @@ CREATE or replace FUNCTION osmc.uncertain_base16h(u float) RETURNS int AS $f$
     WHEN s < 895016 THEN 1
     ELSE 0
     END
-  FROM (SELECT u*2) t(s)
+  FROM (SELECT CASE WHEN u > 9 THEN (ROUND(u,0))*2 ELSE (ROUND(u,1))*2 END) t(s)
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.uncertain_base16h(float)
   IS 'Uncertain base16h, base32 and base16'
