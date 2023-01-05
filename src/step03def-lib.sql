@@ -1022,7 +1022,7 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
             SELECT jsonb_agg(
                 ST_AsGeoJSONb(ST_Transform_resilient(v.geom,4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
-                        'code', CASE WHEN p_base = 18 THEN code16h1c ELSE code16h END,
+                        'code', CASE WHEN p_base = 18 THEN c.code16h1c ELSE c.code16h END,
                         'area', ST_Area(v.geom),
                         'side', SQRT(ST_Area(v.geom)),
                         'base', CASE WHEN p_base = 17 THEN 'base16'
@@ -1033,7 +1033,29 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
                     )::jsonb) AS gj
             FROM
             (
-              SELECT DISTINCT upper(p_iso) AS upper_p_iso, code16h, code16h1c, baseh_to_vbit(code16h,16) AS codebits
+              SELECT DISTINCT upper(p_iso) AS upper_p_iso,
+
+              CASE
+                WHEN length(code16h) > 12 AND upper(p_iso) IN ('BR')           THEN substring(code16h,1,12)
+                WHEN length(code16h) > 11 AND upper(p_iso) IN ('EC','CO','UY') THEN substring(code16h,1,11)
+                ELSE code16h
+              END AS code16h,
+              CASE
+                WHEN length(code16h) > 12 AND upper(p_iso) IN ('BR')           THEN TRUE
+                WHEN length(code16h) > 11 AND upper(p_iso) IN ('EC','CO','UY') THEN TRUE
+                ELSE NULL
+              END AS truncated_code,
+              CASE
+                WHEN length(code16h) > 12 AND upper(p_iso) IN ('BR')           THEN baseh_to_vbit(substring(code16h,1,12),16)
+                WHEN length(code16h) > 11 AND upper(p_iso) IN ('EC','CO','UY') THEN baseh_to_vbit(substring(code16h,1,11),16)
+                ELSE baseh_to_vbit(code16h,16)
+              END AS codebits,
+              CASE
+                WHEN length(code16h) > 11 AND upper(p_iso) IN ('BR') THEN substring(code16h1c,1,11)
+                WHEN length(code16h) > 10 AND upper(p_iso) IN ('UY') THEN substring(code16h1c,1,10)
+                ELSE code16h1c
+              END AS code16h1c
+
               FROM
               (
                 SELECT code AS code16h1c,
@@ -1220,7 +1242,6 @@ CREATE or replace FUNCTION api.osmcode_decode_postal(
             FROM
             (
               SELECT jurisd_local_id, jurisd_base_id, isolabel_ext, country_iso,
-
               CASE
                 WHEN length(code) > 9 AND country_iso IN ('BR')      THEN substring(code,1,9)
                 WHEN length(code) > 8 AND country_iso IN ('EC','CO') THEN substring(code,1,8)
