@@ -1241,9 +1241,9 @@ CREATE or replace FUNCTION api.osmcode_decode_postal(
               END AS codebits,
               isolabel_ext || '~' ||
               CASE
-                WHEN length(code) > 9 AND country_iso IN ('BR')      THEN substring(upper(p_code),1,length(p_code)-1)
-                WHEN length(code) > 8 AND country_iso IN ('EC','CO') THEN substring(upper(p_code),1,length(p_code)-1)
-                WHEN length(code) > 7 AND country_iso IN ('UY')      THEN substring(upper(p_code),1,length(p_code)-1)
+                WHEN length(code) > 9 AND country_iso IN ('BR')      THEN substring(upper(p_code),1,length(p_code)-length(code)+9)
+                WHEN length(code) > 8 AND country_iso IN ('EC','CO') THEN substring(upper(p_code),1,length(p_code)-length(code)+8)
+                WHEN length(code) > 7 AND country_iso IN ('UY')      THEN substring(upper(p_code),1,length(p_code)-length(code)+7)
                 ELSE upper(p_code)
               END AS short_code
               FROM
