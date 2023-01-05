@@ -1205,11 +1205,12 @@ CREATE or replace FUNCTION api.osmcode_decode_postal(
                 ST_AsGeoJSONb(ST_Transform_resilient(v.geom,4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', code,
-                        'short_code', isolabel_ext || '~' || upper(p_code),
+                        'short_code', short_code,
                         'area', ST_Area(v.geom),
                         'side', SQRT(ST_Area(v.geom)),
                         'base', 'base32',
                         'jurisd_local_id', jurisd_local_id,
+                        'truncated_code',truncated_code,
                         'scientic_code', CASE
                                           WHEN country_iso IN ('BR','UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||codebits,16,0),jurisd_base_id)
                                           ELSE                                                   vbit_to_baseh('000'||codebits,16,0)
@@ -1218,10 +1219,36 @@ CREATE or replace FUNCTION api.osmcode_decode_postal(
                     )::jsonb) AS gj
             FROM
             (
-              SELECT jurisd_local_id, jurisd_base_id, isolabel_ext, split_part(isolabel_ext,'-',1) As country_iso, code, baseh_to_vbit(code,32) AS codebits
+              SELECT jurisd_local_id, jurisd_base_id, isolabel_ext, country_iso,
+
+              CASE
+                WHEN length(code) > 9 AND country_iso IN ('BR')      THEN substring(code,1,9)
+                WHEN length(code) > 8 AND country_iso IN ('EC','CO') THEN substring(code,1,8)
+                WHEN length(code) > 7 AND country_iso IN ('UY')      THEN substring(code,1,7)
+                ELSE code
+              END AS code,
+              CASE
+                WHEN length(code) > 9 AND country_iso IN ('BR')      THEN TRUE
+                WHEN length(code) > 8 AND country_iso IN ('EC','CO') THEN TRUE
+                WHEN length(code) > 7 AND country_iso IN ('UY')      THEN TRUE
+                ELSE NULL
+              END AS truncated_code,
+              CASE
+                WHEN length(code) > 9 AND country_iso IN ('BR')      THEN baseh_to_vbit(substring(code,1,9),32)
+                WHEN length(code) > 8 AND country_iso IN ('EC','CO') THEN baseh_to_vbit(substring(code,1,8),32)
+                WHEN length(code) > 7 AND country_iso IN ('UY')      THEN baseh_to_vbit(substring(code,1,7),32)
+                ELSE baseh_to_vbit(code,32)
+              END AS codebits,
+              isolabel_ext || '~' ||
+              CASE
+                WHEN length(code) > 9 AND country_iso IN ('BR')      THEN substring(upper(p_code),1,length(p_code)-1)
+                WHEN length(code) > 8 AND country_iso IN ('EC','CO') THEN substring(upper(p_code),1,length(p_code)-1)
+                WHEN length(code) > 7 AND country_iso IN ('UY')      THEN substring(upper(p_code),1,length(p_code)-1)
+                ELSE upper(p_code)
+              END AS short_code
               FROM
               (
-                  SELECT jurisd_local_id, jurisd_base_id, co.isolabel_ext, vbit_to_baseh(substring(baseh_to_vbit(prefix,16) from 4),32) || upper(substring(p_code,2)) AS code
+                  SELECT jurisd_local_id, jurisd_base_id, co.isolabel_ext, split_part(co.isolabel_ext,'-',1) AS country_iso, vbit_to_baseh(substring(baseh_to_vbit(prefix,16) from 4),32) || upper(substring(p_code,2)) AS code
                   FROM osmc.coverage co
                   LEFT JOIN optim.jurisdiction ju
                   ON co.isolabel_ext = ju.isolabel_ext
