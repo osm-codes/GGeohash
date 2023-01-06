@@ -1025,6 +1025,7 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
                         'code', CASE WHEN p_base = 18 THEN c.code16h1c ELSE c.code16h END,
                         'area', ST_Area(v.geom),
                         'side', SQRT(ST_Area(v.geom)),
+                        'truncated_code',truncated_code,
                         'base', CASE WHEN p_base = 17 THEN 'base16'
                                      WHEN p_base = 18 THEN 'base16h1c'
                                      ELSE                  'base16h'
