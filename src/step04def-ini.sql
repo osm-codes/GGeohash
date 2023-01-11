@@ -330,6 +330,32 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
 
         SELECT (pt).geom, (pt).geom
         FROM ( SELECT ST_DumpPoints((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext)) ) t1(pt)
+
+        UNION
+
+        SELECT geom, geom
+        FROM
+        (
+          SELECT
+            (
+                ST_Dump
+                (
+                    ST_GeneratePoints
+                    (
+                      (
+                        SELECT ST_Difference(geom,ST_Buffer(geom,-0.0001)) AS geom
+                        FROM optim.vw01full_jurisdiction_geom g
+                        WHERE g.isolabel_ext = p_isolabel_ext
+                      )
+                      ,
+                      (FLOOR(ST_Perimeter((SELECT geom
+                        FROM optim.vw01full_jurisdiction_geom g
+                        WHERE g.isolabel_ext = p_isolabel_ext),true)))::int
+                    )
+                )
+            ).geom AS geom
+        ) h
+
     ) b
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.generate_gridcodes(text,float,integer)
@@ -549,6 +575,7 @@ $$;
 
 -- rodar no tmux
 psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop(296584);" &> log_cover_sc
+
 
 DROP TABLE osmc.tmp_check_coverage;
 CREATE TABLE osmc.tmp_check_coverage (
