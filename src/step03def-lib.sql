@@ -246,6 +246,15 @@ CREATE INDEX osm_coverage_geom_idx1         ON osmc.coverage USING gist (geom);
 CREATE INDEX osm_coverage_geom4326_idx1     ON osmc.coverage USING gist (geom_srid4326);
 CREATE INDEX osm_coverage_isolabel_ext_idx1 ON osmc.coverage USING btree (isolabel_ext);
 
+COMMENT ON COLUMN osmc.coverage.id            IS 'Coverage cell identifier.';
+COMMENT ON COLUMN osmc.coverage.isolabel_ext  IS 'ISO 3166-1 alpha-2 code and name (camel case); e.g. BR-SP-SaoPaulo.';
+COMMENT ON COLUMN osmc.coverage.prefix        IS 'Official home page of the organization.';
+COMMENT ON COLUMN osmc.coverage.bbox          IS 'Coverage cell bbox.';
+COMMENT ON COLUMN osmc.coverage.geom          IS 'Coverage cell geometry on default srid.';
+COMMENT ON COLUMN osmc.coverage.geom_srid4326 IS 'Coverage cell geometry on 4326 srid.';
+
+COMMENT ON TABLE osmc.coverage IS 'Jurisdictional coverage.';
+
 ------------------
 -- encode:
 
