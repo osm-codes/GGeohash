@@ -239,6 +239,7 @@ CREATE TABLE osmc.coverage (
   isolabel_ext  text,     -- used only in de-para, replace with 14bit in id
   prefix        text,     -- used only in de-para, cache
   bbox          float[],  -- used      in l0cover and de-para
+  status        SMALLINT DEFAULT 0 CHECK (status IN (0,1,2)), -- 0: generated, 1: revised, 2: homologated
   geom          geometry, -- used      in l0cover and de-para
   geom_srid4326 geometry  -- used only in l0cover
 );
@@ -250,6 +251,7 @@ COMMENT ON COLUMN osmc.coverage.id            IS 'Coverage cell identifier.';
 COMMENT ON COLUMN osmc.coverage.isolabel_ext  IS 'ISO 3166-1 alpha-2 code and name (camel case); e.g. BR-SP-SaoPaulo.';
 COMMENT ON COLUMN osmc.coverage.prefix        IS 'Coverage cell prefix.';
 COMMENT ON COLUMN osmc.coverage.bbox          IS 'Coverage cell bbox.';
+COMMENT ON COLUMN osmc.coverage.status        IS 'Coverage status. Convention: 0: generated, 1: revised, 2: homologated.';
 COMMENT ON COLUMN osmc.coverage.geom          IS 'Coverage cell geometry on default srid.';
 COMMENT ON COLUMN osmc.coverage.geom_srid4326 IS 'Coverage cell geometry on 4326 srid.';
 
