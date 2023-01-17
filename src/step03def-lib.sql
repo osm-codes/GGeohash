@@ -240,6 +240,7 @@ CREATE TABLE osmc.coverage (
   prefix        text,     -- used only in de-para, cache
   bbox          float[],  -- used      in l0cover and de-para
   status        SMALLINT DEFAULT 0 CHECK (status IN (0,1,2)), -- 0: generated, 1: revised, 2: homologated
+  is_overlay    boolean  DEFAULT FALSE,
   geom          geometry, -- used      in l0cover and de-para
   geom_srid4326 geometry  -- used only in l0cover
 );
@@ -252,6 +253,7 @@ COMMENT ON COLUMN osmc.coverage.isolabel_ext  IS 'ISO 3166-1 alpha-2 code and na
 COMMENT ON COLUMN osmc.coverage.prefix        IS 'Coverage cell prefix.';
 COMMENT ON COLUMN osmc.coverage.bbox          IS 'Coverage cell bbox.';
 COMMENT ON COLUMN osmc.coverage.status        IS 'Coverage status. Convention: 0: generated, 1: revised, 2: homologated.';
+COMMENT ON COLUMN osmc.coverage.is_overlay    IS 'True if it is an overlay cell.';
 COMMENT ON COLUMN osmc.coverage.geom          IS 'Coverage cell geometry on default srid.';
 COMMENT ON COLUMN osmc.coverage.geom_srid4326 IS 'Coverage cell geometry on 4326 srid.';
 
