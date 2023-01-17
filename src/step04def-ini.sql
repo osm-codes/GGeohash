@@ -219,6 +219,65 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,text[])
 ;
 -- SELECT osmc.update_coverage_isolevel3_161c('BR-PA-Altamira','{21G,62H,63G,63H,68G,68H,69G,69H,6AG,6AH,6BG,6BH,211FP,211FS,211FT,211FV,211FZ,2135N,2135Q,211K,211L,211M,213K,214L}'::text[]);
 
+CREATE or replace FUNCTION osmc.generate_cover_csv(
+  p_isolabel_ext text,
+  p_path text
+) RETURNS text AS $f$
+DECLARE
+    q_copy text;
+BEGIN
+  q_copy := $$
+    COPY (
+
+    SELECT a.isolabel_ext, LEAST(a.status,b.status) AS status, a.cover_b16h, b.overlay_b16h
+    FROM
+    (
+      SELECT isolabel_ext, MIN(status) AS status, string_agg(prefix,' ') AS cover_b16h
+      FROM
+      (
+        SELECT isolabel_ext, prefix, status
+        FROM osmc.coverage
+        WHERE ( (id::bit(64))::bit(10) ) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- country cover
+              AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- isolevel3 cover
+              AND is_overlay IS FALSE
+        ORDER BY isolabel_ext, length(prefix), prefix
+      ) r
+      GROUP BY isolabel_ext
+      ORDER BY 1
+    ) a
+    LEFT JOIN
+    (
+      SELECT isolabel_ext, MIN(status) AS status, string_agg(prefix,' ') AS overlay_b16h
+      FROM
+      (
+        SELECT isolabel_ext, prefix, status
+        FROM osmc.coverage
+        WHERE ( (id::bit(64))::bit(10) ) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- 76, country cover
+              AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- isolevel3 cover
+              AND is_overlay IS TRUE
+        ORDER BY isolabel_ext, length(prefix), prefix
+      ) r
+      GROUP BY isolabel_ext
+      ORDER BY 1
+    ) b
+    ON a.isolabel_ext = b.isolabel_ext
+
+    ) TO '%s' CSV HEADER
+  $$;
+
+  EXECUTE format(q_copy,p_isolabel_ext,p_isolabel_ext,p_path);
+
+  RETURN 'Ok.';
+END
+$f$ LANGUAGE PLpgSQL;
+COMMENT ON FUNCTION osmc.generate_cover_csv(text,text)
+  IS 'Generate csv with isolevel=3 coverage and overlay in separate array.'
+;
+
+-- SELECT osmc.generate_cover_csv('BR','/tmp/pg_io/coveragebr.csv');
+-- SELECT osmc.generate_cover_csv('CO','/tmp/pg_io/coverageco.csv');
+-- SELECT osmc.generate_cover_csv('UY','/tmp/pg_io/coverageuy.csv');
+
 CREATE or replace FUNCTION osmc.check_coverage(
   p_isolabel_ext text,
   p_cover     text[] -- 16h
@@ -686,51 +745,4 @@ WHERE unioncontainsproperly is false or false = ANY(intersects);
 
 SELECT osmc.update_coverage_isolevel3('BR-PA-PortoMoz','{}'::text[]);
 SELECT * FROM osmc.tmp_coverage_city WHERE isolabel_ext ='BR-AM-Manaus'
-
-
-COPY (
-SELECT isolabel_ext, string_agg(prefix,' ') AS cover_b16h, null AS overlay_b16h
-FROM
-(
-  SELECT isolabel_ext, prefix
-  FROM osmc.coverage
-  WHERE ( (id::bit(64))::bit(10) ) = b'0001001100' -- 76, cover Brasil
-        AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- isolevel3 cover
-  ORDER BY isolabel_ext, length(prefix), prefix
-) r
-GROUP BY isolabel_ext
-ORDER BY 1
-) TO '/tmp/pg_io/coveragebr.csv' CSV HEADER
-;
-
-COPY (
-SELECT isolabel_ext, string_agg(prefix,' ') AS cover_b16h, null AS overlay_b16h
-FROM
-(
-  SELECT isolabel_ext, prefix
-  FROM osmc.coverage
-  WHERE ( (id::bit(64))::bit(10) ) = b'0010101010' -- 170, cover Colombia
-        AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- isolevel3 cover
-  ORDER BY isolabel_ext, length(prefix), prefix
-) r
-GROUP BY isolabel_ext
-ORDER BY 1
-) TO '/tmp/pg_io/coverageco.csv' CSV HEADER
-;
-
-COPY (
-SELECT isolabel_ext, string_agg(prefix,' ') AS cover_b16h, null AS overlay_b16h
-FROM
-(
-  SELECT isolabel_ext, prefix
-  FROM osmc.coverage
-  WHERE ( (id::bit(64))::bit(10) ) = b'1101011010' -- 858, cover Uruguay
-        AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- isolevel3 cover
-  ORDER BY isolabel_ext, length(prefix), prefix
-) r
-GROUP BY isolabel_ext
-ORDER BY 1
-) TO '/tmp/pg_io/coverageuy.csv' CSV HEADER
-;
-
 */
