@@ -101,13 +101,15 @@ FROM
 -- DE_PARA COVER
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
   p_isolabel_ext text,
-  p_cover     text[]
+  p_status       smallint, -- 0: generated, 1: revised, 2: homologated
+  p_cover        text[],
+  p_overlay      text[] DEFAULT array[]::text[]
 ) RETURNS text AS $f$
 
 -- DELETE FROM osmc.coverage WHERE (id::bit(64)<<24)::bit(2) <> 0::bit(2);
   DELETE FROM osmc.coverage WHERE isolabel_ext = p_isolabel_ext;
-  INSERT INTO osmc.coverage(id,bbox,isolabel_ext,prefix,geom)
-  SELECT ((j_id_bit || l_id_bit || mun_princ || cover_parcial || order_prefix_5bits || prefix_bits_pad32)::bit(64))::bigint , bbox, isolabel_ext, prefix, geom
+  INSERT INTO osmc.coverage(id,bbox,isolabel_ext,prefix,status,is_overlay,geom)
+  SELECT ((j_id_bit || l_id_bit || mun_princ || cover_parcial || order_prefix_5bits || prefix_bits_pad32)::bit(64))::bigint , bbox, isolabel_ext, prefix, p_status, is_overlay, geom
   FROM
   (
     SELECT j_id_bit, l_id_bit, '01' AS mun_princ,
@@ -118,21 +120,28 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
     END AS cover_parcial,
     rpad(prefix_bits::text, 32, '00000000000000000000000000000000') AS prefix_bits_pad32,
     (order_prefix::int)::bit(5) AS order_prefix_5bits,
-    q.isolabel_ext, prefix,
+    q.isolabel_ext, prefix, is_overlay,
     ST_Intersection(r.geom_transformed,ggeohash.draw_cell_bybox(bbox,false,p.srid)) AS geom,
     bbox
     FROM
     (
-      SELECT isolabel_ext, srid, jurisd_base_id, prefix,
+      SELECT isolabel_ext, srid, jurisd_base_id, is_overlay, prefix,
             ROW_NUMBER() OVER (PARTITION BY isolabel_ext ORDER BY length(prefix), prefix ASC) AS order_prefix,
             baseh_to_vbit(prefix,16) AS prefix_bits
       FROM
       (
-        SELECT p_isolabel_ext AS isolabel_ext,
+        SELECT p_isolabel_ext AS isolabel_ext, is_overlay,
                ((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
                ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS jurisd_base_id,
-               unnest(p_cover) AS prefix
-        -- FROM osmc.tmp_coverage_city tc
+               prefix
+        FROM
+        (
+               SELECT false AS is_overlay, unnest(p_cover) AS prefix
+
+               UNION
+
+               SELECT true AS is_overlay, unnest(p_overlay) AS prefix
+        ) a
       ) pp
     ) p
     -- new order isolevel=3, number -> 14 bits
@@ -170,16 +179,19 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
 
   RETURNING 'Ok.'
 $f$ LANGUAGE SQL;
-COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,text[])
+COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
--- SELECT osmc.update_coverage_isolevel3('BR-PA-Altamira','{021G,062H,063G,063H,068G,068H,069G,069H,06AG,06AH,06BG,06BH,0211FP,0211FS,0211FT,0211FV,0211FZ,02135N,02135Q,0211K,0211L,0211M,0213K,0214L}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3('BR-PA-Altamira',0::smallint,'{021G,062H,063G,063H,068G,068H,069G,069H,06AG,06AH,06BG,06BH}'::text[],'{0211FP,0211FS,0211FT,0211FV,0211FZ,02135N,02135Q,0211K,0211L,0211M,0213K,0214L}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3('CO-RIS-Pereira',0::smallint,'{0FAH,085G,090G,0EFH}'::text[],'{08551Z,08553P,08553Q,08553R,08553V,08554T,08554Z,08555T,08555Z,08556N,08556P,08556Q,08556R,08556S,08556T,08556V,08556Z,08557N,08557P,08557Q,08557R,08557S,08557T,08557V,09002N,09002P}'::text[]);
 
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
   p_isolabel_ext text,
-  p_cover     text[]
+  p_status       smallint, -- 0: generated, 1: revised, 2: homologated
+  p_cover        text[],
+  p_overlay      text[] DEFAULT array[]::text[]
 ) RETURNS text AS $f$
-  SELECT osmc.update_coverage_isolevel3(p_isolabel_ext,
+  SELECT osmc.update_coverage_isolevel3(p_isolabel_ext,p_status,
     ARRAY(
     SELECT
           CASE
@@ -211,13 +223,47 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
             )
           END || upper(substring(prefix,2))
     FROM unnest(p_cover) g(prefix)
+    ),
+    ARRAY(
+    SELECT
+          CASE
+            -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
+            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(prefix,1,2) IN ('FL','FT','FS','FA','FB','F8','F9')
+            THEN ('0F')
+            -- FQ,F4,F5: tr F -> h
+            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(prefix,1,2) IN ('FQ','F4','F5')
+            THEN ('11')
+            -- FR,F6,F7: tr F -> g
+            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(prefix,1,2) IN ('FR','F6','F7')
+            THEN ('10')
+
+            -- E0,E1,E2: tr F -> g
+            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(prefix,1,2) IN ('E0','E1','E2','EJ','EN','EP')
+            THEN ('10')
+            -- EE,ED,EF: tr 0 -> j
+            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(prefix,1,2) IN ('0A','0B','0T')
+            THEN ('12')
+            -- ,,: tr 5 -> h
+            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(prefix,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F')
+            THEN ('11')
+            ELSE
+            (
+              ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
+                "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
+                "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
+                "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(prefix,1,1))
+            )
+          END || upper(substring(prefix,2))
+    FROM unnest(p_overlay) g(prefix)
     )
   );
 $f$ LANGUAGE SQL;
-COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,text[])
+COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h1c.'
 ;
--- SELECT osmc.update_coverage_isolevel3_161c('BR-PA-Altamira','{21G,62H,63G,63H,68G,68H,69G,69H,6AG,6AH,6BG,6BH,211FP,211FS,211FT,211FV,211FZ,2135N,2135Q,211K,211L,211M,213K,214L}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3_161c('BR-PA-Altamira',0::smallint,'{21G,62H,63G,63H,68G,68H,69G,69H,6AG,6AH,6BG,6BH}'::text[],'{211FP,211FS,211FT,211FV,211FZ,2135N,2135Q,211K,211L,211M,213K,214L}'::text[]);
+
+
 
 CREATE or replace FUNCTION osmc.generate_cover_csv(
   p_isolabel_ext text,
