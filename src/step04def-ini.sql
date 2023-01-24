@@ -3,11 +3,11 @@
 
 -- L0cover COLOMBIA
 --DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 170::bit(10);
-INSERT INTO osmc.coverage(id,isolabel_ext,bbox,geom,geom_srid4326)
+INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        'CO',bbox, geom, ST_Transform(geom,4326)
+        'CO',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
 FROM
 (
   SELECT 170 AS jurisd_base_id,prefix,bbox,geom_country,
@@ -28,11 +28,11 @@ ORDER BY 1
 
 -- L0cover BRASIL
 --DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 76::bit(10);
-INSERT INTO osmc.coverage(id,isolabel_ext,bbox,geom,geom_srid4326)
+INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        'BR',bbox, geom, ST_Transform(geom,4326)
+        'BR',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
 FROM
 (
     SELECT 76 AS jurisd_base_id, prefix, bbox,geom_country,
@@ -52,14 +52,14 @@ ORDER BY 1
 
 -- L0cover URUGUAI
 --DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 858::bit(10);
-INSERT INTO osmc.coverage(id,isolabel_ext,bbox,geom,geom_srid4326)
+INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        'UY',bbox, geom, ST_Transform(geom,4326)
+        'UY',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
 FROM
 (
-  SELECT 858 AS jurisd_base_id,prefix,bbox,geom_country,
+  SELECT 858 AS jurisd_base_id,prefix,bbox,status,is_overlay,geom_country,
     ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,32721),geom_country) AS geom,
     ggeohash.draw_cell_bybox(bbox,false,32721) AS geom_cell
   FROM unnest
@@ -75,11 +75,11 @@ FROM
 
 -- L0cover ECUADOR
 --DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 218::bit(10);
-INSERT INTO osmc.coverage(id,isolabel_ext,bbox,geom,geom_srid4326)
+INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
         rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        'EC',bbox, geom, ST_Transform(geom,4326)
+        'EC',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
 FROM
 (
   (
