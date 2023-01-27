@@ -913,9 +913,9 @@ COMMENT ON FUNCTION osmc.encode_postal(geometry(POINT),int,int,int,float[],varbi
 
 CREATE or replace FUNCTION osmc.encode_postal_br(
   p_geom         geometry(POINT),
-  p_uncertainty  int  DEFAULT -1,
-  p_grid_size    int  DEFAULT 0,
-  p_isolabel_ext text DEFAULT NULL
+  p_uncertainty  float  DEFAULT -1,
+  p_grid_size    int    DEFAULT 0,
+  p_isolabel_ext text   DEFAULT NULL
 ) RETURNS jsonb AS $f$
     SELECT osmc.encode_postal(p_geom,
       CASE
@@ -930,7 +930,39 @@ CREATE or replace FUNCTION osmc.encode_postal_br(
     WHERE isolabel_ext = 'BR' AND ST_Contains(geom,p_geom)
   ) u
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_postal_br(geometry(POINT),int,int,text)
+COMMENT ON FUNCTION osmc.encode_postal_br(geometry(POINT),float,int,text)
+  IS 'Encodes geometry to Postal OSMcode.'
+;
+
+CREATE or replace FUNCTION osmc.encode_postal_co(
+  p_geom         geometry(POINT),
+  p_uncertainty  float  DEFAULT -1,
+  p_grid_size    int    DEFAULT 0,
+  p_isolabel_ext text   DEFAULT NULL
+) RETURNS jsonb AS $f$
+    SELECT osmc.encode_postal(p_geom,
+      CASE
+      WHEN p_uncertainty > -1
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN x > 4 THEN ((x-4)/5)*5
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
+      )
+      ELSE 35
+      END,
+      9377,p_grid_size,u.bbox,u.l0code,170,FALSE,p_isolabel_ext)
+  FROM
+  (
+    SELECT bbox, (id::bit(64)<<30)::bit(5) AS l0code -- 1 dígito base32
+    FROM osmc.coverage
+    WHERE isolabel_ext = 'CO' AND ST_Contains(geom,p_geom)
+  ) u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_postal_co(geometry(POINT),float,int,text)
   IS 'Encodes geometry to Postal OSMcode.'
 ;
 
@@ -941,9 +973,7 @@ CREATE or replace FUNCTION api.osmcode_encode_postal(
 ) RETURNS jsonb AS $wrap$
   SELECT
     CASE split_part(p_isolabel_ext,'-',1)
-    WHEN 'BR' THEN
-
-      osmc.encode_postal_br(ST_Transform(u.geom,952019),latLon[4]::int,grid,p_isolabel_ext)
+    WHEN 'BR' THEN osmc.encode_postal_br(ST_Transform(u.geom,952019),latLon[4],grid,p_isolabel_ext)
       -- osmc.encode_postal(ST_Transform(u.geom,952019),
       -- CASE
       -- WHEN latLon[4] IS NOT NULL THEN ((osmc.uncertain_base16h(latLon[4]::int))/5)*5
@@ -951,23 +981,22 @@ CREATE or replace FUNCTION api.osmcode_encode_postal(
       -- END,
       -- 952019,grid,u.bbox,u.l0code,76,FALSE,p_isolabel_ext)
 
-    WHEN 'CO' THEN
-
-      osmc.encode_postal(ST_Transform(u.geom,9377),
-      CASE
-      WHEN latLon[4] IS NOT NULL
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN x > 4 THEN ((x-4)/5)*5
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
-        )
-      ELSE 35
-      END,
-      9377,grid,u.bbox,u.l0code,170,FALSE,p_isolabel_ext)
+    WHEN 'CO' THEN osmc.encode_postal_co(ST_Transform(u.geom,9377),latLon[4],grid,p_isolabel_ext)
+      -- osmc.encode_postal(ST_Transform(u.geom,9377),
+      -- CASE
+      -- WHEN latLon[4] IS NOT NULL
+      -- THEN
+      -- (
+      --   SELECT
+      --   CASE
+      --     WHEN x > 4 THEN ((x-4)/5)*5
+      --     ELSE 0
+      --   END
+      --   FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
+      --   )
+      -- ELSE 35
+      -- END,
+      -- 9377,grid,u.bbox,u.l0code,170,FALSE,p_isolabel_ext)
 
     WHEN 'UY' THEN
 
@@ -1019,6 +1048,7 @@ COMMENT ON FUNCTION api.osmcode_encode_postal(text,int,text)
 ;
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode_postal('geo:-15.5,-47.8',0,'BR-GO-Planaltina');
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:-15.5,-47.8',32,0);
+
 
 ------------------
 -- osmcode decode:
