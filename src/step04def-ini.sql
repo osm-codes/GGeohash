@@ -609,6 +609,151 @@ COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
 -- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas',0.5,0);
 
+
+CREATE or replace FUNCTION osmc.cover_child_geometries(
+   p_code         text, -- e.g.: '0977M,0977J,0977K,0975M,0975L' in 16h
+   p_isolabel_ext text, -- e.g.: 'CO-BOY-Tunja'
+   p_base         int  DEFAULT 16 -- 16h
+) RETURNS  TABLE (code text, code_child text, geom geometry) AS $f$
+    SELECT
+            c.code16h AS code,
+            vbit_to_baseh( '000' || baseh_to_vbit(ghs,32) ,16) AS code_child,
+            geom
+    FROM
+    (
+        SELECT DISTINCT
+
+        CASE
+        WHEN length(code16h) > 12 AND split_part(p_isolabel_ext,'-',1) IN ('BR')           THEN substring(code16h,1,12)
+        WHEN length(code16h) > 11 AND split_part(p_isolabel_ext,'-',1) IN ('EC','CO','UY') THEN substring(code16h,1,11)
+        ELSE code16h
+        END AS code16h,
+
+        CASE
+        WHEN length(code16h) > 12 AND split_part(p_isolabel_ext,'-',1) IN ('BR')           THEN baseh_to_vbit(substring(code16h,1,12),16)
+        WHEN length(code16h) > 11 AND split_part(p_isolabel_ext,'-',1) IN ('EC','CO','UY') THEN baseh_to_vbit(substring(code16h,1,11),16)
+        ELSE baseh_to_vbit(code16h,16)
+        END AS codebits
+
+        FROM
+        (
+            SELECT code AS code16h1c,
+                CASE
+                    WHEN p_base = 18
+                    THEN
+                    CASE
+                        -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
+                        WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(code,1,2) IN ('FL','FT','FS','FA','FB','F8','F9') THEN ('0F')
+                        -- FQ,F4,F5: tr F -> h
+                        WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(code,1,2) IN ('FQ','F4','F5')                     THEN ('11')
+                        -- FR,F6,F7: tr F -> g
+                        WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(code,1,2) IN ('FR','F6','F7')                     THEN ('10')
+
+                        -- E0,E1,E2: tr F -> g
+                        WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(code,1,2) IN ('E0','E1','E2','EJ','EN','EP')      THEN ('10')
+                        -- EE,ED,EF: tr 0 -> j
+                        WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(code,1,2) IN ('0A','0B','0T')                     THEN ('12')
+                        -- ,,: tr 5 -> h
+                        WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(code,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F') THEN ('11')
+                        ELSE
+                        (
+                        ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
+                            "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
+                            "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
+                            "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(code,1,1))
+                        )
+                    END || substring(code,2)
+                    ELSE code
+                END AS code16h
+            FROM regexp_split_to_table(upper(p_code),',') code
+        ) u
+    ) c,
+    LATERAL
+    (
+        SELECT bbox, ST_SRID(geom) AS srid,
+        CASE
+        WHEN p_base IN (16,17,18) THEN (id::bit(64)<<27)::bit(8) -- 2 dígito  base16h
+        ELSE                           (id::bit(64)<<30)::bit(5) -- 1 dígito  base32
+        END AS l0code
+
+        FROM osmc.coverage
+        WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1) -- cobertura nacional apenas
+        AND ( ( (id::bit(64)<<27)::bit(8) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h, prefixo conforme base
+    ) v,
+    LATERAL
+    (
+        SELECT ghs,
+
+        ST_Intersection(geom,
+            (
+                SELECT ST_Transform(g.geom,v.srid) AS geom_transformed
+                FROM optim.vw01full_jurisdiction_geom g
+                WHERE isolabel_ext = p_isolabel_ext
+            )
+        ) AS geom
+
+        FROM osmc.ggeohash_GeomsFromVarbit(substring(codebits from 9),(codebits<<3)::bit(5),false,srid,32,32,bbox,false)
+
+        WHERE
+            ST_Intersects(
+                (
+                    SELECT ST_Transform(g.geom,v.srid) AS geom_transformed
+                    FROM optim.vw01full_jurisdiction_geom g
+                    WHERE isolabel_ext = p_isolabel_ext
+                )
+            ,geom)
+    ) u
+
+    WHERE
+    CASE WHEN split_part(p_isolabel_ext,'-',1) = 'UY' THEN c.code16h NOT IN ('0EG','10G','12G','00L','12L','0EJ','05H','11H') ELSE TRUE END
+
+    ORDER BY 1,2
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.cover_child_geometries(text,text,int)
+  IS 'Child geometries of the main cover.'
+;
+
+/*
+EXPLAIN ANALYZE SELECT osmc.cover_child_geometries('0977M,0977J,0977K,0975M,0975L','CO-BOY-Tunja',16);
+
+-- Exemplo para obter densidade dos pontos do DANE
+-- Na dl03t_main
+DROP TABLE tmp_orig.tunja_child;
+CREATE TABLE tmp_orig.tunja_child AS
+SELECT * FROM osmc.cover_child_geometries('0977M,0977J,0977K,0975M,0975L','CO-BOY-Tunja',16);
+
+-- no terminal
+pg_dump -t tmp_orig.tunja_child postgres://postgres@localhost/dl03t_main | psql postgres://postgres@localhost/ingest99
+
+-- Na ingest99
+CREATE TABLE tmp_orig.tunja_child_with_points AS
+SELECT r.*, s.feature_id, ST_Transform(s.geom,9377) AS geom_point
+FROM tmp_orig.tunja_child r
+LEFT JOIN tmp_orig.pontos_pereira_tunja s
+ON ST_Contains(r.geom,ST_Transform(s.geom,9377))
+;
+
+SELECT string_agg(code_child,',')
+FROM
+(
+    SELECT code_child, code, qtd_points, ST_Area(geom) AS area, (qtd_points/ST_Area(geom))::float AS density
+    FROM
+    (
+        SELECT code_child, MAX(code) AS code, count(*) AS qtd_points, MAX(geom) AS geom
+        FROM tmp_orig.tunja_child_with_points
+        GROUP BY code_child
+    ) r
+    ORDER BY 5 DESC
+    LIMIT 25
+) s
+;
+-- 09774P,09774S,09774T,09776N,09776Z,09776R,09776V,09774Z,09777T,09776Q,0977DN,09774N,09774V,09774R,09776P,0977CQ,0975ET,09777S,0975BV,09758T,0975BN,0975BZ,09759T,09759S,09770Q
+
+-- Na dl03t_main
+SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{0977M,0977J,0977K,0975M,0975L}'::text[],'{09774P,09774S,09774T,09776N,09776Z,09776R,09776V,09774Z,09777T,09776Q,0977DN,09774N,09774V,09774R,09776P,0977CQ,0975ET,09777S,0975BV,09758T,0975BN,0975BZ,09759T,09759S,09770Q}'::text[]);
+*/
+
+
 /*
 ------------------
 
