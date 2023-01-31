@@ -1366,7 +1366,7 @@ CREATE or replace FUNCTION api.jurisdiction_coverage(
     'features',
       (
         SELECT coalesce(jsonb_agg(
-          ST_AsGeoJSONb(ST_Transform(geom,4326),8,0,null,
+          ST_AsGeoJSONb(ST_Transform_resilient(geom,4326,0.005),8,0,null,
               jsonb_strip_nulls(jsonb_build_object(
                   'code',
                       CASE
