@@ -658,6 +658,151 @@ COMMENT ON FUNCTION osmc.osmcode_encode_scientific(geometry(POINT),int,int,int,i
   IS 'Encodes geometry to OSMcode.'
 ;
 
+CREATE or replace FUNCTION osmc.encode_scientific_br(
+  p_geom        geometry(POINT),
+  p_uncertainty float  DEFAULT -1,
+  p_base        int    DEFAULT 16,
+  p_grid_size   int    DEFAULT 0
+) RETURNS jsonb AS $f$
+    SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
+      CASE
+      WHEN p_uncertainty > -1
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base IN (16,18) THEN x
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
+        )
+      ELSE 35
+      END,
+      952019,p_grid_size,u.bbox,u.l0code,76,FALSE)
+  FROM
+  (
+    SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
+    FROM osmc.coverage
+    WHERE
+        --     (id::bit(64)<<24)::bit(2) = 0::bit(2) -- cobertura nacional apenas
+        -- AND (id::bit(64))::bit(10) = 76::bit(10)
+        isolabel_ext = 'BR'
+        AND ST_Contains(geom,p_geom)
+  ) u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_scientific_br(geometry(POINT),float,int,int)
+  IS 'Encodes geometry to BR Scientific OSMcode.'
+;
+
+CREATE or replace FUNCTION osmc.encode_scientific_co(
+  p_geom        geometry(POINT),
+  p_uncertainty float  DEFAULT -1,
+  p_base        int    DEFAULT 16,
+  p_grid_size   int    DEFAULT 0
+) RETURNS jsonb AS $f$
+    SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
+      CASE
+      WHEN p_uncertainty > -1
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base IN (16) AND x > 4 THEN   x-4
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
+        )
+      ELSE 35
+      END,
+      9377,p_grid_size,u.bbox,u.l0code,170,FALSE)
+  FROM
+  (
+    SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
+    FROM osmc.coverage
+    WHERE
+        --     (id::bit(64)<<24)::bit(2) = 0::bit(2) -- cobertura nacional apenas
+        -- AND (id::bit(64))::bit(10) = 170::bit(10)
+        isolabel_ext = 'CO'
+        AND ST_Contains(geom,p_geom)
+  ) u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_scientific_co(geometry(POINT),float,int,int)
+  IS 'Encodes geometry to CO Scientific OSMcode.'
+;
+
+CREATE or replace FUNCTION osmc.encode_scientific_uy(
+  p_geom        geometry(POINT),
+  p_uncertainty float  DEFAULT -1,
+  p_base        int    DEFAULT 16,
+  p_grid_size   int    DEFAULT 0
+) RETURNS jsonb AS $f$
+    SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
+      CASE
+      WHEN p_uncertainty > -1
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base IN (17)    AND x > 6 THEN ((x-6)/4)*4
+          WHEN p_base IN (16,18) AND x > 6 THEN   x-6
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
+        )
+      ELSE 35
+      END,
+      32721,p_grid_size,u.bbox,u.l0code,858,FALSE)
+  FROM
+  (
+    SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
+    FROM osmc.coverage
+    WHERE
+        --     (id::bit(64)<<24)::bit(2) = 0::bit(2) -- cobertura nacional apenas
+        -- AND (id::bit(64))::bit(10) = 858::bit(10)
+        isolabel_ext = 'UY'
+        AND ST_Contains(geom,p_geom)
+  ) u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_scientific_uy(geometry(POINT),float,int,int)
+  IS 'Encodes geometry to UY Scientific OSMcode.'
+;
+
+CREATE or replace FUNCTION osmc.encode_scientific_ec(
+  p_geom        geometry(POINT),
+  p_uncertainty float  DEFAULT -1,
+  p_base        int    DEFAULT 16,
+  p_grid_size   int    DEFAULT 0
+) RETURNS jsonb AS $f$
+    SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
+      CASE
+      WHEN p_uncertainty > -1
+      THEN
+      (
+        SELECT
+        CASE
+          WHEN p_base IN (16) AND x > 5 THEN   x-5
+          ELSE 0
+        END
+        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
+        )
+      ELSE 35
+      END,
+      32717,p_grid_size,u.bbox,u.l0code,218,TRUE)
+  FROM
+  (
+    SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
+    FROM osmc.coverage
+    WHERE
+        --     (id::bit(64)<<24)::bit(2) = 0::bit(2) -- cobertura nacional apenas
+        -- AND (id::bit(64))::bit(10) = 218::bit(10)
+        isolabel_ext = 'EC'
+        AND ST_Contains(geom,p_geom)
+  ) u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_scientific_ec(geometry(POINT),float,int,int)
+  IS 'Encodes geometry to EC Scientific OSMcode.'
+;
+
 CREATE or replace FUNCTION api.osmcode_encode_scientific(
   uri    text,
   p_base int DEFAULT 16,
@@ -665,99 +810,18 @@ CREATE or replace FUNCTION api.osmcode_encode_scientific(
   p_isolabel_ext text DEFAULT NULL
 ) RETURNS jsonb AS $wrap$
   SELECT
-    -- CASE split_part(p_isolabel_ext,'-',1)
-    CASE u.isolabel_ext
-    WHEN 'BR' THEN
-
-      osmc.osmcode_encode_scientific(ST_Transform(u.geom,952019),p_base,
-      CASE
-      WHEN latLon[4] IS NOT NULL
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN p_base IN (16,18)           THEN   x
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
-        )
-      ELSE 35
-      END,
-      952019,grid,u.bbox,u.l0code,76,FALSE)
-
-    WHEN 'CO' THEN
-
-      osmc.osmcode_encode_scientific(ST_Transform(u.geom,9377),p_base,
-      CASE
-      WHEN latLon[4] IS NOT NULL
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN p_base = 16       AND x > 4 THEN   x-4
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
-        )
-      ELSE 35
-      END,
-      9377,grid,u.bbox,u.l0code,170,FALSE)
-
-    WHEN 'UY' THEN
-
-      osmc.osmcode_encode_scientific(ST_Transform(u.geom,32721),p_base,
-      CASE
-      WHEN latLon[4] IS NOT NULL
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN p_base = 17       AND x > 6 THEN ((x-6)/4)*4
-          WHEN p_base IN (16,18) AND x > 6 THEN   x-6
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
-        )
-      ELSE 35
-      END,
-      32721,grid,u.bbox,u.l0code,858,FALSE)
-
-    WHEN 'EC' THEN
-
-      osmc.osmcode_encode_scientific(ST_Transform(u.geom,32717),p_base,
-      CASE
-      WHEN latLon[4] IS NOT NULL
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN p_base = 16       AND x > 5 THEN   x-5
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
-        )
-      ELSE 35
-      END,
-      32717,grid,u.bbox,u.l0code,218,TRUE)
-
+    CASE split_part(p_isolabel_ext,'-',1)
+    WHEN 'BR' THEN osmc.encode_scientific_br(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),952019),u[4],p_base,grid)
+    WHEN 'CO' THEN osmc.encode_scientific_co(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),9377),u[4],p_base,grid)
+    WHEN 'UY' THEN osmc.encode_scientific_uy(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),32721),u[4],p_base,grid)
+    WHEN 'EC' THEN osmc.encode_scientific_ec(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),32717),u[4],p_base,grid)
     END
-  FROM ( SELECT str_geouri_decode(uri) ) t(latLon),
-  LATERAL
-  (
-    SELECT ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326) AS geom, bbox,
-        (id::bit(64)<<27)::bit(8) AS l0code, -- 2 dígito  base16h
-        isolabel_ext
-    FROM osmc.coverage
-    WHERE
-        ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2) -- cobertura nacional apenas
-        -- AND ( CASE WHEN p_isolabel_ext IS NOT NULL THEN isolabel_ext = p_isolabel_ext END )
-        AND ST_Contains(geom_srid4326,ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326))
-  ) u
+  FROM ( SELECT str_geouri_decode(uri) ) t(u)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION api.osmcode_encode_scientific(text,int,int,text)
   IS 'Encodes Geo URI to OSMcode. Wrap for osmcode_encode_context(geometry)'
 ;
--- EXPLAIN ANALYZE SELECT api.osmcode_encode_scientific('geo:-15.5,-47.8');
+-- EXPLAIN ANALYZE SELECT api.osmcode_encode_scientific('geo:-15.5,-47.8;u=600000',18,'0','BR');
 
 
 CREATE or replace FUNCTION osmc.encode_postal(
