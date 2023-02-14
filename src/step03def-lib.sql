@@ -870,7 +870,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
     (
       SELECT
         CASE
-        WHEN p_grid_size > 0 AND SQRT(ST_Area(c.geom_cell)) > 1
+        WHEN p_grid_size > 0
         THEN
           (
             SELECT jsonb_agg(
@@ -983,16 +983,21 @@ CREATE or replace FUNCTION osmc.encode_postal_br(
 ) RETURNS jsonb AS $f$
     SELECT osmc.encode_postal(p_geom,
       CASE
-      WHEN p_uncertainty > -1 THEN ((osmc.uncertain_base16h(p_uncertainty))/5)*5
+      WHEN p_uncertainty > -1 THEN (x/5)*5
       ELSE 35
       END,
-      952019,p_grid_size,u.bbox,u.l0code,76,FALSE,p_isolabel_ext)
+      952019,
+      CASE
+        WHEN x = 40 THEN 0
+        ELSE p_grid_size
+      END
+      ,u.bbox,u.l0code,76,FALSE,p_isolabel_ext)
   FROM
   (
     SELECT bbox, (id::bit(64)<<30)::bit(5) AS l0code -- 1 dígito base32
     FROM osmc.coverage
     WHERE isolabel_ext = 'BR' AND ST_Contains(geom,p_geom)
-  ) u
+  ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_br(geometry(POINT),float,int,text)
   IS 'Encodes geometry to BR Postal OSMcode.'
@@ -1009,22 +1014,25 @@ CREATE or replace FUNCTION osmc.encode_postal_co(
       WHEN p_uncertainty > -1
       THEN
       (
-        SELECT
         CASE
           WHEN x > 4 THEN ((x-4)/5)*5
           ELSE 0
         END
-        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
       )
       ELSE 35
       END,
-      9377,p_grid_size,u.bbox,u.l0code,170,FALSE,p_isolabel_ext)
+      9377,
+      CASE
+        WHEN x > 34 THEN 0
+        ELSE p_grid_size
+      END
+      ,u.bbox,u.l0code,170,FALSE,p_isolabel_ext)
   FROM
   (
     SELECT bbox, (id::bit(64)<<30)::bit(5) AS l0code -- 1 dígito base32
     FROM osmc.coverage
     WHERE isolabel_ext = 'CO' AND ST_Contains(geom,p_geom)
-  ) u
+  ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_co(geometry(POINT),float,int,text)
   IS 'Encodes geometry to CO Postal OSMcode.'
@@ -1041,22 +1049,25 @@ CREATE or replace FUNCTION osmc.encode_postal_uy(
       WHEN p_uncertainty > -1
       THEN
       (
-        SELECT
         CASE
           WHEN x > 6 THEN ((x-6)/5)*5
           ELSE 0
         END
-        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
       )
       ELSE 35
       END,
-      32721,p_grid_size,u.bbox,u.l0code,858,FALSE,p_isolabel_ext)
+      32721,
+      CASE
+        WHEN x > 31 THEN 0
+        ELSE p_grid_size
+      END
+      ,u.bbox,u.l0code,858,FALSE,p_isolabel_ext)
   FROM
   (
     SELECT bbox, (id::bit(64)<<30)::bit(5) AS l0code -- 1 dígito base32
     FROM osmc.coverage
     WHERE isolabel_ext = 'UY' AND ST_Contains(geom,p_geom)
-  ) u
+  ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_uy(geometry(POINT),float,int,text)
   IS 'Encodes geometry to UY Postal OSMcode.'
@@ -1073,22 +1084,25 @@ CREATE or replace FUNCTION osmc.encode_postal_ec(
       WHEN p_uncertainty > -1
       THEN
       (
-        SELECT
         CASE
           WHEN x > 5 THEN ((x-5)/5)*5
           ELSE 0
         END
-        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
       )
       ELSE 35
       END,
-      32717,p_grid_size,u.bbox,u.l0code,218,TRUE,p_isolabel_ext)
+      32717,
+      CASE
+        WHEN x > 35 THEN 0
+        ELSE p_grid_size
+      END
+      ,u.bbox,u.l0code,218,TRUE,p_isolabel_ext)
   FROM
   (
     SELECT bbox, (id::bit(64)<<30)::bit(5) AS l0code -- 1 dígito base32
     FROM osmc.coverage
     WHERE isolabel_ext = 'EC' AND ST_Contains(geom,p_geom)
-  ) u
+  ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_ec(geometry(POINT),float,int,text)
   IS 'Encodes geometry to EC Postal OSMcode.'
