@@ -264,6 +264,12 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,smallint,text[],tex
 -- SELECT osmc.update_coverage_isolevel3_161c('BR-PA-Altamira',0::smallint,'{21G,62H,63G,63H,68G,68H,69G,69H,6AG,6AH,6BG,6BH}'::text[],'{211FP,211FS,211FT,211FV,211FZ,2135N,2135Q,211K,211L,211M,213K,214L}'::text[]);
 
 
+CASE
+WHEN p_isolabel_ext IN ('BR') THEN osmc.encode_16h1c(prefix,76)
+WHEN p_isolabel_ext IN ('UY') THEN osmc.encode_16h1c(prefix,858)
+ELSE prefix
+END
+
 
 CREATE or replace FUNCTION osmc.generate_cover_csv(
   p_isolabel_ext text,
@@ -275,13 +281,20 @@ BEGIN
   q_copy := $$
     COPY (
 
-    SELECT a.isolabel_ext, LEAST(a.status,b.status) AS status, a.cover_b16h, b.overlay_b16h
+    SELECT a.isolabel_ext, LEAST(a.status,b.status) AS status, a.cover, b.overlay
     FROM
     (
-      SELECT isolabel_ext, MIN(status) AS status, string_agg(prefix,' ') AS cover_b16h
+      SELECT isolabel_ext, MIN(status) AS status, string_agg(prefix,' ') AS cover
       FROM
       (
-        SELECT isolabel_ext, prefix, status
+        SELECT isolabel_ext, status,
+
+          CASE
+          WHEN '%s' IN ('BR') THEN osmc.encode_16h1c(prefix,76)
+          WHEN '%s' IN ('UY') THEN osmc.encode_16h1c(prefix,858)
+          ELSE prefix
+          END AS prefix
+
         FROM osmc.coverage
         WHERE ( (id::bit(64))::bit(10) ) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- country cover
               AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- isolevel3 cover
@@ -293,10 +306,17 @@ BEGIN
     ) a
     LEFT JOIN
     (
-      SELECT isolabel_ext, MIN(status) AS status, string_agg(prefix,' ') AS overlay_b16h
+      SELECT isolabel_ext, MIN(status) AS status, string_agg(prefix,' ') AS overlay
       FROM
       (
-        SELECT isolabel_ext, prefix, status
+        SELECT isolabel_ext, status,
+
+          CASE
+          WHEN '%s' IN ('BR') THEN osmc.encode_16h1c(prefix,76)
+          WHEN '%s' IN ('UY') THEN osmc.encode_16h1c(prefix,858)
+          ELSE prefix
+          END AS prefix
+
         FROM osmc.coverage
         WHERE ( (id::bit(64))::bit(10) ) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- 76, country cover
               AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- isolevel3 cover
@@ -311,7 +331,7 @@ BEGIN
     ) TO '%s' CSV HEADER
   $$;
 
-  EXECUTE format(q_copy,p_isolabel_ext,p_isolabel_ext,p_path);
+  EXECUTE format(q_copy,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_path);
 
   RETURN 'Ok.';
 END
@@ -751,7 +771,22 @@ FROM
 
 -- Na dl03t_main
 SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{0977M,0977J,0977K,0975M,0975L}'::text[],'{09774P,09774S,09774T,09776N,09776Z,09776R,09776V,09774Z,09777T,09776Q,0977DN,09774N,09774V,09774R,09776P,0977CQ,0975ET,09777S,0975BV,09758T,0975BN,0975BZ,09759T,09759S,09770Q}'::text[]);
+
+DROP TABLE tmp_orig.tunja_child_density;
+CREATE TABLE tmp_orig.tunja_child_density AS
+SELECT r.code_child, r.code, r.qtd_points, ST_Area(s.geom) AS area, (qtd_points/ST_Area(s.geom))::float AS density, s.geom
+FROM
+(
+    SELECT code_child, MAX(code) AS code, count(*) AS qtd_points
+    FROM tmp_orig.tunja_child_with_points
+    GROUP BY code_child
+) r
+LEFT JOIN tmp_orig.tunja_child s
+ON r.code_child = s.code_child
+;
+
 */
+
 
 
 /*

@@ -1226,7 +1226,7 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
    p_base      int  DEFAULT 16,
    p_separator text DEFAULT '\+'
 ) RETURNS jsonb AS $f$
-  SELECT api.osmcode_decode_scientific_absolute(u[2],u[1],p_base)
+  SELECT api.osmcode_decode_scientific_absolute(REPLACE(u[2],'.',''),u[1],p_base)
   FROM regexp_split_to_array(p_code,p_separator) u
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION api.osmcode_decode_scientific_absolute(text,int)
@@ -1316,7 +1316,7 @@ COMMENT ON FUNCTION api.osmcode_decode_postal_absolute(text,text)
 CREATE or replace FUNCTION api.osmcode_decode_postal_absolute(
    p_code text
 ) RETURNS jsonb AS $f$
-  SELECT api.osmcode_decode_postal_absolute(u[2],u[1])
+  SELECT api.osmcode_decode_postal_absolute(REPLACE(u[2],'.',''),u[1])
   FROM regexp_split_to_array(p_code,'~') u
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION api.osmcode_decode_postal_absolute(text)
@@ -1410,7 +1410,7 @@ COMMENT ON FUNCTION api.osmcode_decode_postal(text,text)
 CREATE or replace FUNCTION api.osmcode_decode_postal(
    p_code text
 ) RETURNS jsonb AS $f$
-  SELECT api.osmcode_decode_postal(u[2],u[1])
+  SELECT api.osmcode_decode_postal(REPLACE(u[2],'.',''),u[1])
   FROM regexp_split_to_array(p_code,'~') u
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION api.osmcode_decode_postal(text)
