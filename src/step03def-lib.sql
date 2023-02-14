@@ -614,14 +614,14 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
     (
       SELECT
         CASE
-        WHEN p_grid_size > 0 AND SQRT(ST_Area(c.geom_cell)) > 1
+        WHEN p_grid_size > 0
         THEN
           (
             SELECT jsonb_agg(
                 ST_AsGeoJSONb(ST_Transform_resilient((CASE WHEN p_grid_size % 2 = 1 THEN ST_Centroid(geom) ELSE geom END),4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', upper(ghs2),
-                        'code_subcell', substr(ghs2,length(code2)+1,length(ghs2)),
+                        'code_subcell', (CASE WHEN length(code2) = length(ghs2) THEN substr(ghs2,length(code2),length(ghs2)) ELSE substr(ghs2,length(code2)+1,length(ghs2)) END) ,
                         'prefix', code2,
                         'area', ST_Area(geom),
                         'side', SQRT(ST_Area(geom)),
@@ -666,19 +666,19 @@ CREATE or replace FUNCTION osmc.encode_scientific_br(
 ) RETURNS jsonb AS $f$
     SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
       CASE
-      WHEN p_uncertainty > -1
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN p_base IN (16,18) THEN x
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
-        )
+      WHEN p_uncertainty > -1 AND p_base     IN (16,18) THEN x
+      WHEN p_uncertainty > -1 AND p_base NOT IN (16,18) THEN 0
       ELSE 35
       END,
-      952019,p_grid_size,u.bbox,u.l0code,76,FALSE)
+      952019,
+      CASE
+        WHEN x = 40 THEN 0
+        WHEN p_grid_size > 0 AND x = 39 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 3 ELSE 2 END))
+        WHEN p_grid_size > 0 AND x = 38 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 5 ELSE 4 END))
+        WHEN p_grid_size > 0 AND x = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
+        ELSE p_grid_size
+      END
+      ,u.bbox,u.l0code,76,FALSE)
   FROM
   (
     SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
@@ -688,7 +688,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_br(
         -- AND (id::bit(64))::bit(10) = 76::bit(10)
         isolabel_ext = 'BR'
         AND ST_Contains(geom,p_geom)
-  ) u
+  ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_br(geometry(POINT),float,int,int)
   IS 'Encodes geometry to BR Scientific OSMcode.'
@@ -702,19 +702,19 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
 ) RETURNS jsonb AS $f$
     SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
       CASE
-      WHEN p_uncertainty > -1
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN p_base IN (16) AND x > 4 THEN   x-4
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
-        )
+      WHEN p_uncertainty > -1 AND      p_base IN (16) AND x > 4  THEN x-4
+      WHEN p_uncertainty > -1 AND NOT (p_base IN (16) AND x > 4) THEN 0
       ELSE 35
       END,
-      9377,p_grid_size,u.bbox,u.l0code,170,FALSE)
+      9377,
+      CASE
+        WHEN x > 39 THEN 0
+        WHEN p_grid_size > 0 AND x = 39 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 3 ELSE 2 END))
+        WHEN p_grid_size > 0 AND x = 38 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 5 ELSE 4 END))
+        WHEN p_grid_size > 0 AND x = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
+        ELSE p_grid_size
+      END
+      ,u.bbox,u.l0code,170,FALSE)
   FROM
   (
     SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
@@ -724,7 +724,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
         -- AND (id::bit(64))::bit(10) = 170::bit(10)
         isolabel_ext = 'CO'
         AND ST_Contains(geom,p_geom)
-  ) u
+  ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_co(geometry(POINT),float,int,int)
   IS 'Encodes geometry to CO Scientific OSMcode.'
@@ -738,20 +738,20 @@ CREATE or replace FUNCTION osmc.encode_scientific_uy(
 ) RETURNS jsonb AS $f$
     SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
       CASE
-      WHEN p_uncertainty > -1
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN p_base IN (17)    AND x > 6 THEN ((x-6)/4)*4
-          WHEN p_base IN (16,18) AND x > 6 THEN   x-6
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
-        )
+      WHEN p_uncertainty > -1 AND p_base IN (17)    AND x > 6 THEN ((x-6)/4)*4
+      WHEN p_uncertainty > -1 AND p_base IN (16,18) AND x > 6 THEN   x-6
+      WHEN p_uncertainty > -1 AND NOT (p_base IN (16,17,18) AND x > 6) THEN   x-6
       ELSE 35
       END,
-      32721,p_grid_size,u.bbox,u.l0code,858,FALSE)
+      32721,
+      CASE
+        WHEN x = 40 THEN 0
+        WHEN p_grid_size > 0 AND x = 39 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 3 ELSE 2 END))
+        WHEN p_grid_size > 0 AND x = 38 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 5 ELSE 4 END))
+        WHEN p_grid_size > 0 AND x = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
+        ELSE p_grid_size
+      END
+      ,u.bbox,u.l0code,858,FALSE)
   FROM
   (
     SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
@@ -761,7 +761,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_uy(
         -- AND (id::bit(64))::bit(10) = 858::bit(10)
         isolabel_ext = 'UY'
         AND ST_Contains(geom,p_geom)
-  ) u
+  ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_uy(geometry(POINT),float,int,int)
   IS 'Encodes geometry to UY Scientific OSMcode.'
@@ -775,19 +775,19 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
 ) RETURNS jsonb AS $f$
     SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
       CASE
-      WHEN p_uncertainty > -1
-      THEN
-      (
-        SELECT
-        CASE
-          WHEN p_base IN (16) AND x > 5 THEN   x-5
-          ELSE 0
-        END
-        FROM osmc.uncertain_base16h(p_uncertainty) t(x)
-        )
+      WHEN p_uncertainty > -1 AND      p_base IN (16) AND x > 5  THEN x-5
+      WHEN p_uncertainty > -1 AND NOT (p_base IN (16) AND x > 5) THEN x-5
       ELSE 35
       END,
-      32717,p_grid_size,u.bbox,u.l0code,218,TRUE)
+      32717,
+      CASE
+        WHEN x = 40 THEN 0
+        WHEN p_grid_size > 0 AND x = 39 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 3 ELSE 2 END))
+        WHEN p_grid_size > 0 AND x = 38 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 5 ELSE 4 END))
+        WHEN p_grid_size > 0 AND x = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
+        ELSE p_grid_size
+      END
+      ,u.bbox,u.l0code,218,TRUE)
   FROM
   (
     SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
@@ -797,7 +797,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
         -- AND (id::bit(64))::bit(10) = 218::bit(10)
         isolabel_ext = 'EC'
         AND ST_Contains(geom,p_geom)
-  ) u
+  ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_ec(geometry(POINT),float,int,int)
   IS 'Encodes geometry to EC Scientific OSMcode.'
