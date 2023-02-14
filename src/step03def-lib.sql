@@ -1011,14 +1011,8 @@ CREATE or replace FUNCTION osmc.encode_postal_co(
 ) RETURNS jsonb AS $f$
     SELECT osmc.encode_postal(p_geom,
       CASE
-      WHEN p_uncertainty > -1
-      THEN
-      (
-        CASE
-          WHEN x > 4 THEN ((x-4)/5)*5
-          ELSE 0
-        END
-      )
+      WHEN p_uncertainty > -1 AND x > 4  THEN ((x-4)/5)*5
+      WHEN p_uncertainty > -1 AND x <= 4 THEN 0
       ELSE 35
       END,
       9377,
@@ -1046,14 +1040,8 @@ CREATE or replace FUNCTION osmc.encode_postal_uy(
 ) RETURNS jsonb AS $f$
     SELECT osmc.encode_postal(p_geom,
       CASE
-      WHEN p_uncertainty > -1
-      THEN
-      (
-        CASE
-          WHEN x > 6 THEN ((x-6)/5)*5
-          ELSE 0
-        END
-      )
+      WHEN p_uncertainty > -1 AND x > 6  THEN ((x-6)/5)*5
+      WHEN p_uncertainty > -1 AND x <= 6 THEN 0
       ELSE 35
       END,
       32721,
@@ -1081,14 +1069,8 @@ CREATE or replace FUNCTION osmc.encode_postal_ec(
 ) RETURNS jsonb AS $f$
     SELECT osmc.encode_postal(p_geom,
       CASE
-      WHEN p_uncertainty > -1
-      THEN
-      (
-        CASE
-          WHEN x > 5 THEN ((x-5)/5)*5
-          ELSE 0
-        END
-      )
+      WHEN p_uncertainty > -1 AND x > 5  THEN ((x-5)/5)*5
+      WHEN p_uncertainty > -1 AND x <= 5 THEN ((x-5)/5)*5
       ELSE 35
       END,
       32717,
