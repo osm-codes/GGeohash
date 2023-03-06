@@ -1430,15 +1430,7 @@ CREATE or replace FUNCTION api.jurisdiction_coverage(
               jsonb_strip_nulls(jsonb_build_object(
                   'code',
                       CASE
-                        WHEN p_base = 18
-                        THEN
-                        (
-                          ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
-                            "08": "8", "09": "9", "0A": "A", "0B": "B", "0C": "C", "0D": "D", "0E": "E", "0F": "F",
-                            "10": "g", "11": "h", "12": "j", "13": "k", "14": "l", "15": "m", "16": "n", "17": "p",
-                            "18": "q", "19": "r", "1A": "s", "1B": "t", "1C": "v", "1D": "z"}'::jsonb)->>(substring(code,1,2))
-                            || upper(substring(code,3))
-                        )
+                        WHEN p_base = 18 THEN osmc.encode_16h1c(code,(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->( (osmc.str_geocodeiso_decode(p_iso))[2]  ))::int)
                         ELSE code
                       END
                   ,
@@ -1454,31 +1446,28 @@ CREATE or replace FUNCTION api.jurisdiction_coverage(
               )::jsonb),'[]'::jsonb)
         FROM
         (
-          (
-            SELECT geom, bbox,
-            vbit_to_baseh(
+          SELECT geom, bbox,
+
+            CASE
+            WHEN (osmc.str_geocodeiso_decode(p_iso))[1] LIKE '%-%-%'
+            THEN prefix
+            ELSE vbit_to_baseh(
                 CASE
                 WHEN p_base IN (16,17,18) THEN (id::bit(64)<<27)::bit(8) -- 2 dígito  base16h
                 ELSE                           (id::bit(64)<<30)::bit(5) -- 1 dígito  base32
                 END,
-                CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END) AS code,
-                null AS index
-              FROM osmc.coverage
-              WHERE ( (id::bit(64))::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(upper(p_iso)))::int)::bit(10) )
-                  -- cobertura nacional apenas
-                  AND (id::bit(64)<<24)::bit(2) = 0::bit(2)
-          )
-          UNION ALL
-          (
-            SELECT geom, bbox, prefix AS code, --**** CONVERTER
-                    CASE
-                    WHEN p_base IN (16,17,18)
-                    THEN vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
-                    ELSE vbit_to_baseh( (id::bit(64)<<27)::bit(5),32)
-                    END AS index
-              FROM osmc.coverage
-              WHERE isolabel_ext = (osmc.str_geocodeiso_decode(p_iso))[1]
-          )
+                CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END
+              )
+            END AS code,
+
+            CASE
+            WHEN (osmc.str_geocodeiso_decode(p_iso))[1] LIKE '%-%-%'
+            THEN vbit_to_baseh( (id::bit(64)<<27)::bit(5),32)
+            ELSE null
+            END AS index
+
+            FROM osmc.coverage
+            WHERE isolabel_ext = (osmc.str_geocodeiso_decode(p_iso))[1]
         ) t
         -- area geom
         LEFT JOIN LATERAL
