@@ -242,6 +242,41 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION ggeohash.encode3(float, float, float[], integer, boolean)
   IS 'Wrap for ggeohash.encode3(float, float, float, float, float, float, integer, boolean).'
 ;
+
+--
+CREATE or replace FUNCTION ggeohash.val_normalized(x int, xmin int, xmax int) RETURNS int AS $f$
+  SELECT ( ( (x-xmin)::float / (xmax-xmin)::float )*2147483647::float )::int
+$f$ LANGUAGE SQL IMMUTABLE;
+          	
+CREATE or replace FUNCTION ggeohash.encode4(
+   x    int,   y    int,
+   xmin int,   xmax int,
+   ymin int,   ymax int,
+   xbits_cut int default 62
+) RETURNS varbit as $f$
+DECLARE
+ r varbit := b'';
+ xb bit(31);
+ yb bit(31);
+ i   int := 0;
+BEGIN
+ -- algorithm tested before at https://github.com/mmcloughlin/geohash/blob/master/geohash.go#L47
+ xb := ggeohash.val_normalized(x, xmin, xmax)::bit(31); -- not 32 to ignore the signal bit
+ yb := ggeohash.val_normalized(y, ymin, ymax)::bit(31);
+ -- interleaving:
+ FOR i in 0..(xbits_cut-1) LOOP
+    r := r || get_bit(xb,i) || get_bit(yb,i);
+ END LOOP;
+ RETURN r;  -- for cast hidden bit representatioon, (b'01'||r)::bigint
+END
+$f$ LANGUAGE PLpgSQL IMMUTABLE;
+COMMENT ON FUNCTION ggeohash.encode4(int, int, int, int, int, int)
+  IS 'Supposed best optimized algoriuthm for Morton curves.'
+;
+
+-- CREATE or replace FUNCTION ggeohash.encode_latlong(
+-- no xmax, ymax, etc. only latlong 
+
 -- -- --
 
 CREATE or replace FUNCTION ggeohash.decode_box( -- to box array
