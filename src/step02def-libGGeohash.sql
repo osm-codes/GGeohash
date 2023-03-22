@@ -410,16 +410,68 @@ COMMENT ON FUNCTION ggeohash.decode_box2(varbit, float[],boolean)
 ------------------------------
 --- Classic Geohash functions:
 
+--CREATE or replace FUNCTION ggeohash.classic_encode(
+-- latitude float,
+-- longitude float,
+-- code_size int default NULL
+--) RETURNS text as $f$
+
+
+CREATE or replace FUNCTION ggeohash.latlon_normalized(x float, r float) RETURNS int AS $f$
+  -- bug?
+  SELECT ( ( (x+r)  / (2*r) )*1073741824::float )::int    --  2^31 -1  (mas deveria ser exponencial cheia, usar 2^30!?)
+$f$ LANGUAGE SQL IMMUTABLE;
+
 CREATE or replace FUNCTION ggeohash.classic_encode(
+   lat    float,   lon    float,
+   xbits_trunc int default 20  -- old base32 code_size int default NULL
+) RETURNS varbit as $f$
+DECLARE
+ r varbit := b'';
+ latB bit(31);
+ lonB bit(31);
+ i   int;
+BEGIN
+ -- algorithm tested before at https://github.com/mmcloughlin/geohash/blob/master/geohash.go#L47
+ latB := ggeohash.latlon_normalized(lat, 90.)::bit(31); -- not 32 to ignore the signal bit
+ lonB := ggeohash.latlon_normalized(lon, 180.)::bit(31);
+ -- interleaving:
+ FOR i in 0..(xbits_trunc-1) LOOP
+    r := r || get_bit(latB,i)::bit(1) || get_bit(lonB,i)::bit(1);
+ END LOOP;
+ RETURN r;  -- for cast hidden bit representation, (b'01'||r)::bigint
+END
+$f$ LANGUAGE PLpgSQL IMMUTABLE;
+COMMENT ON FUNCTION ggeohash.encode_classic(float, float, int)
+  IS 'Optimized algoriuthm for classic Geohash.'
+   --   IS 'Encondes LatLon as classic Geohash of Niemeyer 2008.'
+;
+-- BUG?? Praça da Sé is "6gyf4bf1". Must be equal! but '6gye25q2'!='6gyf4bf1' 
+-- SELECT *, natcod.vbit_to_strstd(ghs_varbit,'32ghs') FROM (
+--  SELECT ggeohash.encode_classic(-23.550278,-46.633889) as ghs_varbit,
+--         ggeohash.classic_encode_assert(-23.550278,-46.633889,8) as ghs_ref
+--  ) t;  -- confirm by https://geohash.softeng.co/6gyf4bf1
+
+CREATE or replace FUNCTION ggeohash.classic_encode_pgis(
  latitude float,
  longitude float,
  code_size int default NULL
-) RETURNS text as $f$
- SELECT ggeohash.encode(latitude,longitude,code_size,5,'0123456789bcdefghjkmnpqrstuvwxyz')
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.classic_encode(float,float,int)
-  IS 'Encondes LatLon as classic Geohash of Niemeyer 2008.'
+) RETURNS text as $wrap$
+ SELECT ST_GeoHash(ST_SetSRID(ST_Point(longitude,latitude),4326),code_size)
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION ggeohash.classic_encode_pgis(float,float,int)
+  IS 'Encondes LatLon as classic Geohash by reliable PostGIS functions.'
 ;
+
+CREATE or replace FUNCTION ggeohash.classic_encode_pgis_to_vbit(
+ latitude float,
+ longitude float,
+ code_size int default NULL
+) RETURNS varbit as $wrap$
+ SELECT natcod.b32ghs_to_vbit( ggeohash.classic_encode_pgis($1,$2,$3) );
+$wrap$ LANGUAGE SQL IMMUTABLE;
+
+-------
 
 CREATE or replace FUNCTION ggeohash.classic_decode(
    code text,
