@@ -1225,7 +1225,7 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
   SELECT api.osmcode_decode_scientific_absolute(REPLACE(u[2],'.',''),u[1],p_base)
   FROM regexp_split_to_array(p_code,p_separator) u
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION api.osmcode_decode_scientific_absolute(text,int)
+COMMENT ON FUNCTION api.osmcode_decode_scientific_absolute(text,int,text)
   IS 'Decode Scientific OSMcode. Wrap for osmcode_decode_scientific_absolute.'
 ;
 -- EXPLAIN ANALYZE SELECT api.osmcode_decode_scientific_absolute('BR+D1A',18);
