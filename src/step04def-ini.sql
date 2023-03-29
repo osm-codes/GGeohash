@@ -264,13 +264,6 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,smallint,text[],tex
 -- SELECT osmc.update_coverage_isolevel3_161c('BR-PA-Altamira',0::smallint,'{21G,62H,63G,63H,68G,68H,69G,69H,6AG,6AH,6BG,6BH}'::text[],'{211FP,211FS,211FT,211FV,211FZ,2135N,2135Q,211K,211L,211M,213K,214L}'::text[]);
 
 
-CASE
-WHEN p_isolabel_ext IN ('BR') THEN osmc.encode_16h1c(prefix,76)
-WHEN p_isolabel_ext IN ('UY') THEN osmc.encode_16h1c(prefix,858)
-ELSE prefix
-END
-
-
 CREATE or replace FUNCTION osmc.generate_cover_csv(
   p_isolabel_ext text,
   p_path text
@@ -434,6 +427,10 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
   p_fraction     float DEFAULT 0.005, -- fraction of ST_CharactDiam
   buffer_type    integer DEFAULT 0
 ) RETURNS TABLE(id int, ggeohash text, geom geometry) AS $f$
+    WITH jurisd_geom AS
+    (
+      SELECT geom FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext = p_isolabel_ext
+    )
     SELECT row_number() OVER() AS id,
           CASE split_part(p_isolabel_ext,'-',1)
             WHEN 'BR' THEN osmc.encode_point_brazil(geom_centroid)
@@ -445,48 +442,41 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
         SELECT ST_Centroid(geom) AS geom_centroid, geom
         FROM
         (
-            SELECT (ST_SquareGrid(ST_CharactDiam(osmc.buffer_geom(g.geom,buffer_type))*p_fraction, osmc.buffer_geom(g.geom,buffer_type))).*
-            FROM optim.vw01full_jurisdiction_geom g
-            WHERE g.isolabel_ext = p_isolabel_ext
+            SELECT (ST_SquareGrid(ST_CharactDiam(geom)*p_fraction,geom)).*
+            FROM jurisd_geom
         ) a
-        WHERE ST_Contains((SELECT osmc.buffer_geom(geom,buffer_type) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext),ST_Centroid(geom))
 
         UNION
 
         SELECT (pt).geom, (pt).geom
-        FROM ( SELECT ST_DumpPoints((SELECT geom FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext)) ) t1(pt)
+        FROM
+        (
+          SELECT ST_DumpPoints(geom)
+          FROM jurisd_geom
+        ) t1(pt)
 
         UNION
+
+        -- SELECT ST_Centroid(geom) AS geom_centroid, geom
+        -- FROM
+        -- (
+        --     SELECT (ST_SquareGrid(0.00001,ST_Difference(geom,ST_Buffer(geom,-0.0001)))).*
+        --     FROM jurisd_geom
+        -- ) h
 
         SELECT geom, geom
         FROM
         (
-          SELECT
-            (
-                ST_Dump
-                (
-                    ST_GeneratePoints
-                    (
-                      (
-                        SELECT ST_Difference(geom,ST_Buffer(geom,-0.0001)) AS geom
-                        FROM optim.vw01full_jurisdiction_geom g
-                        WHERE g.isolabel_ext = p_isolabel_ext
-                      )
-                      ,
-                      (FLOOR(ST_Perimeter((SELECT geom
-                        FROM optim.vw01full_jurisdiction_geom g
-                        WHERE g.isolabel_ext = p_isolabel_ext),true)))::int
-                    )
-                )
-            ).geom AS geom
+          SELECT (ST_Dump(ST_GeneratePoints(ST_Difference(geom,ST_Buffer(geom,-0.00005)),LEAST((FLOOR(ST_Perimeter(geom,true)))::int,50000)))).geom AS geom
+          FROM jurisd_geom
         ) h
-
     ) b
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.generate_gridcodes(text,float,integer)
   IS 'Returns geohash table of grid centroids within the jurisdiction using the characteristic diameter.'
 ;
 -- SELECT * FROM osmc.generate_gridcodes('BR-SP-SaoPaulo');
+
 
 CREATE or replace FUNCTION osmc.generate_cover(
   p_isolabel_ext text,
@@ -603,7 +593,6 @@ FROM
     FROM osmc.generate_cover(p_isolabel_ext,p_fraction,buffer_type)
     WHERE number_cells < 32 -- MAX 31 cells
     ORDER BY number_cells DESC
-    LIMIT 1
 ) p,
 -- generate array in scientific base. 16h
 LATERAL (
@@ -621,6 +610,8 @@ LATERAL (
         (('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(iso))::int AS srid,
         (('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(iso))::int AS jurisd_base_id
 ) q
+WHERE
+(SELECT (osmc.check_coverage(p_isolabel_ext,array_remove(cover_scientific,'N'))).unioncontainsproperly) IS TRUE
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
@@ -802,26 +793,52 @@ CREATE TABLE osmc.tmp_coverage_city (
   cover_scientific text[] NOT NULL -- 16h
 );
 
--- Gera coberturas para isolevel3 de osm_id isolevel2
+DROP TABLE osmc.tmp_check_coverage;
+CREATE TABLE osmc.tmp_check_coverage (
+  isolabel_ext text   NOT NULL,
+  prefix text[],
+  order_prefix int[],
+  ContainsProperly boolean[],
+  Intersects boolean[],
+  UnionContainsProperly boolean
+);
+
+-- Tabela para armazenar os isolabel_ext que terão cobertura gerada
+DROP TABLE osmc.tmp_gerar;
+CREATE TABLE osmc.tmp_gerar AS
+SELECT isolabel_ext FROM optim.jurisdiction WHERE isolabel_ext LIKE 'BR-%-%' AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage)
+;
+
+-- COBERTURAS para isolabel_ext em osmc.tmp_gerar
 CREATE OR replace PROCEDURE osmc.cover_loop(
-    p_state_osm_id bigint -- osm_id da unidade da federação
+    p_fraction float DEFAULT 0.005 -- grid
 )
 LANGUAGE PLpgSQL
 AS $$
 DECLARE
     r RECORD;
 BEGIN
-    FOR r IN EXECUTE format('SELECT isolabel_ext FROM optim.jurisdiction WHERE parent_id = %s;' ,p_state_osm_id)
+    FOR r IN EXECUTE format('SELECT isolabel_ext FROM osmc.tmp_gerar ;','')
     LOOP
         RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
-        INSERT INTO osmc.tmp_coverage_city SELECT * FROM osmc.select_cover((r.isolabel_ext)::text);
+        INSERT INTO osmc.tmp_coverage_city SELECT * FROM osmc.select_cover((r.isolabel_ext)::text,p_fraction);
+
+        INSERT INTO osmc.tmp_check_coverage
+        SELECT (osmc.check_coverage(isolabel_ext,array_remove(cover_scientific,'N'))).*
+        FROM osmc.tmp_coverage_city
+        WHERE isolabel_ext = '(r.isolabel_ext)::text';
+
         COMMIT;
         RAISE NOTICE 'Cobertura inserida';
     END LOOP;
+
+    -- deletar coberturas já existentes
+    -- DELETE FROM osmc.tmp_check_coverage
+    -- WHERE isolabel_ext IN (SELECT isolabel_ext FROM osmc.coverage);
 END;
 $$;
 
--- ADD type 1 coverage
+-- ADD COVER TYPE 1 in osmc.coverage
 CREATE OR replace PROCEDURE osmc.cover_loop2(
 )
 LANGUAGE PLpgSQL
@@ -839,91 +856,44 @@ BEGIN
 END;
 $$;
 
--- Refinar grid e gerar novas coberturas para coberturas type 3 e type 4
-CREATE OR replace PROCEDURE osmc.cover_loop3(
-  p_fraction float
-)
-LANGUAGE PLpgSQL
-AS $$
-DECLARE
-    r RECORD;
-BEGIN
-    FOR r IN (SELECT isolabel_ext FROM osmc.tmp_check_coverage WHERE UnionContainsProperly is false)
-    LOOP
-        RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
-        INSERT INTO osmc.tmp_coverage_city SELECT * FROM osmc.select_cover((r.isolabel_ext)::text,p_fraction);
-        COMMIT;
-        RAISE NOTICE 'Cobertura inserida';
-    END LOOP;
-END;
-$$;
 
--- rodar no tmux
-psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop(296584);" &> log_cover_sc
+-- tmux
+psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop();" &> log
 
-
-DROP TABLE osmc.tmp_check_coverage;
-CREATE TABLE osmc.tmp_check_coverage (
-  isolabel_ext text   NOT NULL,
-  prefix text[],
-  order_prefix int[],
-  ContainsProperly boolean[],
-  Intersects boolean[],
-  UnionContainsProperly boolean
-);
-
-INSERT INTO osmc.tmp_check_coverage
-SELECT (osmc.check_coverage(isolabel_ext,array_remove(cover_scientific,'N'))).*
-FROM osmc.tmp_coverage_city
-;
--- 5569
-
+-- COVER TYPE 1
 -- Return coverage OK
--- cover type 1
 SELECT count(*)
 FROM osmc.tmp_check_coverage
 WHERE UnionContainsProperly is true AND NOT (false = ANY(Intersects));
--- 5246
 
+-- COVER TYPE 2
 -- Return complete coverage with non-intercepting cells.
 -- Solution: remove cells that do not intersect
--- cover type 2
 SELECT count(*)
 FROM osmc.tmp_check_coverage
 WHERE UnionContainsProperly is true AND false = ANY(Intersects);
--- 20
 
+-- COVER TYPE 3
 -- Return partial coverage.
 -- Possible solution: increase amount of points
--- cover type 3
 SELECT count(*)
 FROM osmc.tmp_check_coverage
 WHERE (UnionContainsProperly is false) AND NOT (false = ANY(Intersects));
--- 296
 
+-- COVER TYPE 4
 -- Return partial coverage with non-intercepting cells.
 -- Possible solution: increase amount of points and remove cells that do not intersect
--- cover type 4
 SELECT count(*)
 FROM osmc.tmp_check_coverage
 WHERE UnionContainsProperly is false AND false = ANY(Intersects);
--- 7
 
--- deletar coberturas já existentes
-DELETE FROM osmc.tmp_check_coverage
-WHERE isolabel_ext IN (SELECT isolabel_ext FROM osmc.coverage);
 
--- adicionar coberturas type 1
--- usar procedure osmc.cover_loop2
+-- ADD COVER TYPE 1, use osmc.cover_loop2
 SELECT osmc.update_coverage_isolevel3(isolabel_ext,prefix)
 FROM osmc.tmp_check_coverage
-WHERE UnionContainsProperly is true AND false != ANY(Intersects);
+WHERE UnionContainsProperly is true AND NOT (false = ANY(Intersects));
 
--- deletar coberturas já existentes
-DELETE FROM osmc.tmp_check_coverage
-WHERE isolabel_ext IN (SELECT isolabel_ext FROM osmc.coverage);
-
--- adicionar coberturas type 2
+-- ADD COVER TYPE 2
 SELECT osmc.update_coverage_isolevel3(isolabel_ext,prefix)
 FROM
 (
@@ -941,16 +911,13 @@ FROM
 ;
 
 -- deletar coberturas já existentes
-DELETE FROM osmc.tmp_check_coverage
+DELETE FROM osmc.tmp_gerar
 WHERE isolabel_ext IN (SELECT isolabel_ext FROM osmc.coverage);
 
--- Refinar grid de coberturas type 3 e type 4
-DELETE FROM osmc.tmp_coverage_city;
-psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop3(0.001);" &> log_cover_sc
-
+-- REFINAR COBERTURAS TYPE 3 E TYPE 4
 -- repetir processo e refinar as que ainda forem type 3 e 4
 DELETE FROM osmc.tmp_coverage_city;
-psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop3(0.0001);" &> log_cover_sc
+psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop(0.001);" &> log_cover_sc
 
 
 -- para checar coberturas existentes:
