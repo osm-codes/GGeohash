@@ -50,13 +50,13 @@ COMMENT ON FUNCTION osmc.ij_to_geom(int,int,int,int,int,int)
 CREATE or replace FUNCTION osmc.ij_to_bbox(
   i  int, -- coluna
   j  int, -- linha
-  x0 float, -- referencia de inicio do eixo x [x0,y0]
-  y0 float, -- referencia de inicio do eixo y [x0,y0]
-  s  float  -- lado da célula
-) RETURNS float[] AS $f$
-  SELECT array[ x0+i::float*s, y0+j::float*s, x0+i::float*s+s, y0+j::float*s+s ]
+  x0 int, -- referencia de inicio do eixo x [x0,y0]
+  y0 int, -- referencia de inicio do eixo y [x0,y0]
+  s  int  -- lado da célula
+) RETURNS int[] AS $f$
+  SELECT array[ x0+i*s, y0+j*s, x0+i*s+s, y0+j*s+s ]
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.ij_to_bbox(int,int,float,float,float)
+COMMENT ON FUNCTION osmc.ij_to_bbox(int,int,int,int,int)
  IS 'Retorna bbox de célula da matriz.'
 ;
 -- SELECT osmc.ij_to_bbox(0,0,4180000,1035500,262144);
@@ -211,7 +211,7 @@ CREATE or replace FUNCTION osmc.ggeohash_GeomsFromVarbit(
   p_srid      int     DEFAULT 4326,  -- WGS84
   p_base      int     DEFAULT 16,
   p_grid_size int     DEFAULT 2,
-  p_bbox      float[] DEFAULT array[0.,0.,0.,0.],
+  p_bbox      int[] DEFAULT array[0.,0.,0.,0.],
   p_lonlat    boolean DEFAULT false  -- false: latLon, true: lonLat
 ) RETURNS TABLE(ghs text, geom geometry) AS $f$
   SELECT vbit_to_baseh(p_l0code || p_code || x,p_base,0), 
@@ -238,7 +238,7 @@ CREATE TABLE osmc.coverage (
   id            bigint NOT NULL,
   isolabel_ext  text,     -- used only in de-para, replace with 14bit in id
   prefix        text,     -- used only in de-para, cache
-  bbox          float[],  -- used      in l0cover and de-para
+  bbox          int[],  -- used      in l0cover and de-para
   status        SMALLINT DEFAULT 0 CHECK (status IN (0,1,2)), -- 0: generated, 1: revised, 2: homologated
   is_overlay    boolean  DEFAULT FALSE,
   geom          geometry, -- used      in l0cover and de-para
@@ -346,7 +346,7 @@ CREATE or replace FUNCTION osmc.encode(
   p_bit_length int     DEFAULT 40,
   p_srid       int     DEFAULT 9377,
   p_grid_size  int     DEFAULT 32,
-  p_bbox       float[] DEFAULT array[0.,0.,0.,0.],
+  p_bbox       int[] DEFAULT array[0.,0.,0.,0.],
   p_l0code     varbit  DEFAULT b'0',
   p_jurisd_base_id int DEFAULT 170,
   p_lonlat     boolean DEFAULT false  -- false: latLon, true: lonLat
@@ -511,7 +511,7 @@ CREATE or replace FUNCTION osmc.encode(
     '0EG','10G','12G','00L','12L','0EJ','05H','11H'
     ) ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode(geometry(POINT),int,int,int,int,float[],varbit,int,boolean)
+COMMENT ON FUNCTION osmc.encode(geometry(POINT),int,int,int,int,int[],varbit,int,boolean)
   IS 'Encodes geometry to OSMcode.'
 ;
 
@@ -578,7 +578,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
   p_bit_length int     DEFAULT 40,
   p_srid       int     DEFAULT 9377,
   p_grid_size  int     DEFAULT 2,
-  p_bbox       float[] DEFAULT array[0.,0.,0.,0.],
+  p_bbox       int[] DEFAULT array[0.,0.,0.,0.],
   p_l0code     varbit  DEFAULT b'0',
   p_jurisd_base_id int DEFAULT 170,
   p_lonlat     boolean DEFAULT false  -- false: latLon, true: lonLat
@@ -654,7 +654,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
     '0EG','10G','12G','00L','12L','0EJ','05H','11H'
     ) ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.osmcode_encode_scientific(geometry(POINT),int,int,int,int,float[],varbit,int,boolean)
+COMMENT ON FUNCTION osmc.osmcode_encode_scientific(geometry(POINT),int,int,int,int,int[],varbit,int,boolean)
   IS 'Encodes geometry to OSMcode.'
 ;
 
@@ -829,7 +829,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
   p_bit_length int     DEFAULT 40,
   p_srid       int     DEFAULT 9377,
   p_grid_size  int     DEFAULT 32,
-  p_bbox       float[] DEFAULT array[0.,0.,0.,0.],
+  p_bbox       int[] DEFAULT array[0.,0.,0.,0.],
   p_l0code     varbit  DEFAULT b'0',
   p_jurisd_base_id int DEFAULT 170,
   p_lonlat     boolean DEFAULT false,  -- false: latLon, true: lonLat
@@ -971,7 +971,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
     '0EG','10G','12G','00L','12L','0EJ','05H','11H'
     ) ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_postal(geometry(POINT),int,int,int,float[],varbit,int,boolean,text)
+COMMENT ON FUNCTION osmc.encode_postal(geometry(POINT),int,int,int,int[],varbit,int,boolean,text)
   IS 'Encodes geometry to Postal OSMcode.'
 ;
 

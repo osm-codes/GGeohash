@@ -19,7 +19,7 @@ FROM
       --'{0,1,2,3,4,5,6,7,8,9,B,C,D,F,G,H,J,K,L,M,N,P,Q,R,S,T,U,V,W,X,Y,Z}'::text[],
       array[0,45,37,38,39,31,32,33,25,26,27,28,29,18,19,20,21,22,23,12,13,14,15,16,17,8,9,10,3,4]
       ) t(prefix,quadrant),
-      LATERAL (SELECT osmc.ij_to_bbox(quadrant%6,quadrant/6,4180000.0,1035500.0,262144.0)) u(bbox),
+      LATERAL (SELECT osmc.ij_to_bbox(quadrant%6,quadrant/6,4180000,1035500,262144)) u(bbox),
       LATERAL (SELECT ST_Transform(geom,9377) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'CO' AND jurisd_base_id = 170) r(geom_country)
   WHERE quadrant IS NOT NULL AND quadrant > 0
 ) y
@@ -43,7 +43,7 @@ FROM
         '{00,01,02,03,04,05,06,07,08,09,0A,0B,0C,0D,0E,0F,10,11,12,13,14,15,16,17,18,19,1A,1B,1C,1D,1E,1F}'::text[],
         array[20,21,22,23,15,16,17,18,19,11,12,13,6,7,8,2,24,14]
         ) t(prefix,quadrant),
-        LATERAL (SELECT osmc.ij_to_bbox(quadrant%5,quadrant/5,2715000.0,6727000.0,1048576.0)) u(bbox),
+        LATERAL (SELECT osmc.ij_to_bbox(quadrant%5,quadrant/5,2715000,6727000,1048576)) u(bbox),
         LATERAL (SELECT ST_Transform(geom,952019) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'BR' AND jurisd_base_id = 76) r(geom_country)
     WHERE quadrant IS NOT NULL
 ) y
@@ -67,7 +67,7 @@ FROM
         '{00,01,02,03,04,05,06,07,08,09,0A,0B,0C,0D,0E,0F,10,11,12,13,14,15,16,17,18,19,1A,1B,1C,1D,1E,1F}'::text[],
         array[40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3]
       ) t(prefix,quadrant),
-      LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,353000.0,6028000.0,131072.0)) u(bbox),
+      LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,353000,6028000,131072)) u(bbox),
       LATERAL (SELECT ST_Transform(geom,32721) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'UY' AND jurisd_base_id = 858) r(geom_country)
   WHERE quadrant IS NOT NULL
 ) z

@@ -185,10 +185,10 @@ COMMENT ON FUNCTION ggeohash.encode2(float, float, integer, integer, text, float
 CREATE or replace FUNCTION ggeohash.encode3(
    x float,
    y float,
-   min_x float default -90.,
-   min_y float default -180.,
-   max_x float default 90.,
-   max_y float default 180.,
+   min_x int default -90.,
+   min_y int default -180.,
+   max_x int default 90.,
+   max_y int default 180.,
    bit_length int default 40,
    lonlat boolean default false -- false: latLon, true: lonLat
 ) RETURNS varbit as $f$
@@ -225,7 +225,7 @@ BEGIN
  RETURN bit_string;
 END
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.encode3(float, float, float, float, float, float, integer, boolean)
+COMMENT ON FUNCTION ggeohash.encode3(float, float, int, int, int, int, integer, boolean)
   IS 'Encondes LatLon WGS84 as Generalized Geohash.'
 ;
 -- SELECT ggeohash.encode3(4642144.0,1759788.0,4442144,1559788,4704288,1821932,10);
@@ -233,14 +233,14 @@ COMMENT ON FUNCTION ggeohash.encode3(float, float, float, float, float, float, i
 CREATE or replace FUNCTION ggeohash.encode3(
    x float,
    y float,
-   bbox float[],
+   bbox int[],
    bit_length int,
    lonlat boolean default false -- false: latLon, true: lonLat
 ) RETURNS varbit as $f$
    SELECT ggeohash.encode3(x,y,bbox[1],bbox[2],bbox[3],bbox[4],bit_length,lonlat)
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.encode3(float, float, float[], integer, boolean)
-  IS 'Wrap for ggeohash.encode3(float, float, float, float, float, float, integer, boolean).'
+COMMENT ON FUNCTION ggeohash.encode3(float, float, encode3[], integer, boolean)
+  IS 'Wrap for ggeohash.encode3(float, float, int, int, int, int, integer, boolean).'
 ;
 
 --
@@ -354,12 +354,12 @@ COMMENT ON FUNCTION ggeohash.decode_box(text, integer, jsonb, float[])
 -- pode substituir ggeohash.decode_box
 CREATE or replace FUNCTION ggeohash.decode_box2(
    code  varbit,
-   min_x  float   default -90.,
-   min_y  float   default -180.,
-   max_x  float   default 90.,
-   max_y  float   default 180.,
+   min_x  int   default -90.,
+   min_y  int   default -180.,
+   max_x  int   default 90.,
+   max_y  int   default 180.,
    lonlat boolean default false -- false: latLon, true: lonLat
-) RETURNS float[] as $f$
+) RETURNS int[] as $f$
 DECLARE
   mid float;
   bit int;
@@ -390,19 +390,19 @@ BEGIN
    RETURN array[min_x, min_y, max_x, max_y];
 END
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.decode_box2(varbit, float, float, float, float, boolean)
+COMMENT ON FUNCTION ggeohash.decode_box2(varbit, int, int, int, int, boolean)
   IS 'Decodes string of a Generalized Geohash into a bounding Box that matches it. Returns a four-element array: [minlat, minlon, maxlat, maxlon]. Algorithm adapted from https://github.com/ppKrauss/node-geohash/blob/master/main.js'
 ;
 
 CREATE or replace FUNCTION ggeohash.decode_box2(
    code varbit,
-   bbox float[],
+   bbox int[],
    lonlat boolean default false
-) RETURNS float[] as $wrap$
+) RETURNS int[] as $wrap$
   SELECT ggeohash.decode_box2($1, bbox[1], bbox[2], bbox[3], bbox[4],lonlat)
 $wrap$ LANGUAGE sql IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.decode_box2(varbit, float[],boolean)
-  IS 'Wrap for ggeohash.decode_box2(varbit, float, float, float, float, boolean).'
+COMMENT ON FUNCTION ggeohash.decode_box2(varbit, int[],boolean)
+  IS 'Wrap for ggeohash.decode_box2(varbit, int, int, int, int, boolean).'
 ;
 
 ------------------------------
@@ -603,7 +603,7 @@ COMMENT ON FUNCTION ggeohash.draw_cell_bycenter(int,int,int,boolean,int)
 ;
 
 CREATE or replace FUNCTION ggeohash.draw_cell_bybox(
-  b float[],  -- bbox [min_x, min_y, max_x, max_y]
+  b int[],  -- bbox [min_x, min_y, max_x, max_y]
   p_translate boolean DEFAULT false, -- true para converter em LatLong (WGS84 sem projeção)
   p_srid int DEFAULT 4326            -- WGS84
 ) RETURNS geometry AS $f$
@@ -616,6 +616,6 @@ FROM (
   ), p_srid) AS geom
 ) t
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.draw_cell_bybox(float[],boolean,int)
+COMMENT ON FUNCTION ggeohash.draw_cell_bybox(int[],boolean,int)
   IS 'Draws a square-cell from BBOX.'
 ;
