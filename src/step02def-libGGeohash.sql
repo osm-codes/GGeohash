@@ -239,7 +239,7 @@ CREATE or replace FUNCTION ggeohash.encode3(
 ) RETURNS varbit as $f$
    SELECT ggeohash.encode3(x,y,bbox[1],bbox[2],bbox[3],bbox[4],bit_length,lonlat)
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.encode3(float, float, encode3[], integer, boolean)
+COMMENT ON FUNCTION ggeohash.encode3(float, float, int[], integer, boolean)
   IS 'Wrap for ggeohash.encode3(float, float, int, int, int, int, integer, boolean).'
 ;
 
