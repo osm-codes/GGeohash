@@ -270,7 +270,7 @@ BEGIN
  RETURN r;  -- for cast hidden bit representatioon, (b'01'||r)::bigint
 END
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.encode4(int, int, int, int, int, int)
+COMMENT ON FUNCTION ggeohash.encode4(int, int, int, int, int, int, int)
   IS 'Supposed best optimized algoriuthm for Morton curves.'
 ;
 
@@ -442,13 +442,13 @@ BEGIN
  RETURN r;  -- for cast hidden bit representation, (b'01'||r)::bigint
 END
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
-COMMENT ON FUNCTION ggeohash.encode_classic(float, float, int)
+COMMENT ON FUNCTION ggeohash.classic_encode(float, float, int)
   IS 'Optimized algoriuthm for classic Geohash.'
    --   IS 'Encondes LatLon as classic Geohash of Niemeyer 2008.'
 ;
 -- BUG?? Praça da Sé is "6gyf4bf1". Must be equal! but '6gye25q2'!='6gyf4bf1' 
 -- SELECT *, natcod.vbit_to_strstd(ghs_varbit,'32ghs') FROM (
---  SELECT ggeohash.encode_classic(-23.550278,-46.633889) as ghs_varbit,
+--  SELECT ggeohash.classic_encode(-23.550278,-46.633889) as ghs_varbit,
 --         ggeohash.classic_encode_assert(-23.550278,-46.633889,8) as ghs_ref
 --  ) t;  -- confirm by https://geohash.softeng.co/6gyf4bf1
 
