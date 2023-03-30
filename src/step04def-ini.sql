@@ -6,7 +6,7 @@
 INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-        rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
+        rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
         'CO',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
 FROM
 (
@@ -31,7 +31,7 @@ ORDER BY 1
 INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-        rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
+        rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
         'BR',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
 FROM
 (
@@ -55,7 +55,7 @@ ORDER BY 1
 INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-        rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
+        rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
         'UY',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
 FROM
 (
@@ -78,7 +78,7 @@ FROM
 INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
 SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-        rpad((baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
+        rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
         'EC',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
 FROM
 (
@@ -127,7 +127,7 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
     (
       SELECT isolabel_ext, srid, jurisd_base_id, is_overlay, prefix,
             ROW_NUMBER() OVER (PARTITION BY isolabel_ext ORDER BY length(prefix), prefix ASC) AS order_prefix,
-            baseh_to_vbit(prefix,16) AS prefix_bits
+            natcod.baseh_to_vbit(prefix,16) AS prefix_bits
       FROM
       (
         SELECT p_isolabel_ext AS isolabel_ext, is_overlay,
@@ -361,7 +361,7 @@ FROM
     (
       SELECT isolabel_ext, srid, jurisd_base_id, prefix,
             ROW_NUMBER() OVER (PARTITION BY isolabel_ext ORDER BY length(prefix), prefix ASC) AS order_prefix,
-            baseh_to_vbit(prefix,16) AS prefix_bits
+            natcod.baseh_to_vbit(prefix,16) AS prefix_bits
       FROM
       (
         SELECT p_isolabel_ext AS isolabel_ext,
@@ -598,11 +598,11 @@ FROM
 LATERAL (
     SELECT
         ARRAY(
-            SELECT vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0)
+            SELECT vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code,32),16,0)
                 -- CASE
-                -- WHEN iso     IN ('BR') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0),76)
-                -- WHEN iso     IN ('UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0),858)
-                -- WHEN iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||baseh_to_vbit(code,32),16,0)
+                -- WHEN iso     IN ('BR') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code,32),16,0),76)
+                -- WHEN iso     IN ('UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code,32),16,0),858)
+                -- WHEN iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code,32),16,0)
                 -- ELSE NULL
                 -- END
             FROM unnest(cover) t(code)
@@ -628,7 +628,7 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
 ) RETURNS  TABLE (code text, code_child text, geom geometry) AS $f$
     SELECT
             c.code16h AS code,
-            vbit_to_baseh( '000' || baseh_to_vbit(ghs,32) ,16) AS code_child,
+            vbit_to_baseh( '000' || natcod.b32nvu_to_vbit(ghs,32) ,16) AS code_child,
             geom
     FROM
     (
@@ -641,9 +641,9 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
         END AS code16h,
 
         CASE
-        WHEN length(code16h) > 12 AND split_part(p_isolabel_ext,'-',1) IN ('BR')           THEN baseh_to_vbit(substring(code16h,1,12),16)
-        WHEN length(code16h) > 11 AND split_part(p_isolabel_ext,'-',1) IN ('EC','CO','UY') THEN baseh_to_vbit(substring(code16h,1,11),16)
-        ELSE baseh_to_vbit(code16h,16)
+        WHEN length(code16h) > 12 AND split_part(p_isolabel_ext,'-',1) IN ('BR')           THEN natcod.baseh_to_vbit(substring(code16h,1,12),16)
+        WHEN length(code16h) > 11 AND split_part(p_isolabel_ext,'-',1) IN ('EC','CO','UY') THEN natcod.baseh_to_vbit(substring(code16h,1,11),16)
+        ELSE natcod.baseh_to_vbit(code16h,16)
         END AS codebits
 
         FROM
