@@ -594,7 +594,7 @@ FROM
 LATERAL (
     SELECT
         ARRAY(
-            SELECT vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0)
+            SELECT natcod.vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16)
                 -- CASE
                 -- WHEN iso     IN ('BR') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0),76)
                 -- WHEN iso     IN ('UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0),858)
@@ -624,7 +624,7 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
 ) RETURNS  TABLE (code text, code_child text, geom geometry) AS $f$
     SELECT
             c.code16h AS code,
-            vbit_to_baseh( '000' || natcod.b32nvu_to_vbit(ghs) ,16) AS code_child,
+            natcod.vbit_to_baseh( '000' || natcod.b32nvu_to_vbit(ghs) ,16) AS code_child,
             geom
     FROM
     (
@@ -646,30 +646,7 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
         (
             SELECT code AS code16h1c,
                 CASE
-                    WHEN p_base = 18
-                    THEN
-                    CASE
-                        -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
-                        WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(code,1,2) IN ('FL','FT','FS','FA','FB','F8','F9') THEN ('0F')
-                        -- FQ,F4,F5: tr F -> h
-                        WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(code,1,2) IN ('FQ','F4','F5')                     THEN ('11')
-                        -- FR,F6,F7: tr F -> g
-                        WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(code,1,2) IN ('FR','F6','F7')                     THEN ('10')
-
-                        -- E0,E1,E2: tr F -> g
-                        WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(code,1,2) IN ('E0','E1','E2','EJ','EN','EP')      THEN ('10')
-                        -- EE,ED,EF: tr 0 -> j
-                        WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(code,1,2) IN ('0A','0B','0T')                     THEN ('12')
-                        -- ,,: tr 5 -> h
-                        WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(code,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F') THEN ('11')
-                        ELSE
-                        (
-                        ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
-                            "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
-                            "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
-                            "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(code,1,1))
-                        )
-                    END || substring(code,2)
+                    WHEN p_base = 18 THEN osmc.decode_16h1c(code,upper(split_part(p_isolabel_ext,'-',1)))
                     ELSE code
                 END AS code16h
             FROM regexp_split_to_table(upper(p_code),',') code
