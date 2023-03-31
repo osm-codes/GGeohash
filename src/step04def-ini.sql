@@ -594,11 +594,11 @@ FROM
 LATERAL (
     SELECT
         ARRAY(
-            SELECT vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code,32),16,0)
+            SELECT vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0)
                 -- CASE
-                -- WHEN iso     IN ('BR') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code,32),16,0),76)
-                -- WHEN iso     IN ('UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code,32),16,0),858)
-                -- WHEN iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code,32),16,0)
+                -- WHEN iso     IN ('BR') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0),76)
+                -- WHEN iso     IN ('UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0),858)
+                -- WHEN iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0)
                 -- ELSE NULL
                 -- END
             FROM unnest(cover) t(code)
@@ -624,7 +624,7 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
 ) RETURNS  TABLE (code text, code_child text, geom geometry) AS $f$
     SELECT
             c.code16h AS code,
-            vbit_to_baseh( '000' || natcod.b32nvu_to_vbit(ghs,32) ,16) AS code_child,
+            vbit_to_baseh( '000' || natcod.b32nvu_to_vbit(ghs) ,16) AS code_child,
             geom
     FROM
     (
