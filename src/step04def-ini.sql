@@ -74,7 +74,7 @@ FROM
     ggeohash.draw_cell_bybox(bbox,false,32721) AS geom_cell
   FROM unnest
       (
-        '{00,01,02,03,04,05,06,07,08,09,0A,0B,0C,0D,0E,0F,10,11,12,13,14,15,16,17,18,19,1A,1B,1C,1D,1E,1F}'::text[],
+        '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
         array[40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3]
       ) t(prefix,quadrant),
       LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,353000,6028000,131072)) u(bbox),
@@ -98,7 +98,7 @@ FROM
       ggeohash.draw_cell_bybox(bbox,false,32717) AS geom_cell
     FROM unnest
         (
-        '{00,01,02,03,04,05,06,07,08,09,0A,0B,0C,0D,0E,0F,10,11,12,13,14,15,16,17,18,19,1A,1B,1C,1D,1E,1F}'::text[],
+        '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
         array[60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6]
         ) t(prefix,quadrant),
         LATERAL (SELECT ARRAY[ -870000 + (quadrant%10)*262144, 9401000 + (quadrant/10)*(131072), -870000 + (quadrant%10)*262144+262144, 9401000 + (quadrant/10)*(131072)+131072 ]) u(bbox),
@@ -203,67 +203,11 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
 ) RETURNS text AS $f$
   SELECT osmc.update_coverage_isolevel3(p_isolabel_ext,p_status,
     ARRAY(
-    SELECT
-          CASE
-            -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
-            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(prefix,1,2) IN ('FL','FT','FS','FA','FB','F8','F9')
-            THEN ('0F')
-            -- FQ,F4,F5: tr F -> h
-            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(prefix,1,2) IN ('FQ','F4','F5')
-            THEN ('11')
-            -- FR,F6,F7: tr F -> g
-            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(prefix,1,2) IN ('FR','F6','F7')
-            THEN ('10')
-
-            -- E0,E1,E2: tr F -> g
-            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(prefix,1,2) IN ('E0','E1','E2','EJ','EN','EP')
-            THEN ('10')
-            -- EE,ED,EF: tr 0 -> j
-            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(prefix,1,2) IN ('0A','0B','0T')
-            THEN ('12')
-            -- ,,: tr 5 -> h
-            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(prefix,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F')
-            THEN ('11')
-            ELSE
-            (
-              ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
-                "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
-                "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
-                "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(prefix,1,1))
-            )
-          END || upper(substring(prefix,2))
+    SELECT osmc.decode_16h1c(prefix,upper(split_part(p_isolabel_ext,'-',1)))
     FROM unnest(p_cover) g(prefix)
     ),
     ARRAY(
-    SELECT
-          CASE
-            -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
-            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(prefix,1,2) IN ('FL','FT','FS','FA','FB','F8','F9')
-            THEN ('0F')
-            -- FQ,F4,F5: tr F -> h
-            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(prefix,1,2) IN ('FQ','F4','F5')
-            THEN ('11')
-            -- FR,F6,F7: tr F -> g
-            WHEN split_part(p_isolabel_ext,'-',1) = 'BR' AND substring(prefix,1,2) IN ('FR','F6','F7')
-            THEN ('10')
-
-            -- E0,E1,E2: tr F -> g
-            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(prefix,1,2) IN ('E0','E1','E2','EJ','EN','EP')
-            THEN ('10')
-            -- EE,ED,EF: tr 0 -> j
-            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(prefix,1,2) IN ('0A','0B','0T')
-            THEN ('12')
-            -- ,,: tr 5 -> h
-            WHEN split_part(p_isolabel_ext,'-',1) = 'UY' AND substring(prefix,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F')
-            THEN ('11')
-            ELSE
-            (
-              ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
-                "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
-                "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
-                "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(prefix,1,1))
-            )
-          END || upper(substring(prefix,2))
+    SELECT osmc.decode_16h1c(prefix,upper(split_part(p_isolabel_ext,'-',1)))
     FROM unnest(p_overlay) g(prefix)
     )
   );
@@ -273,7 +217,7 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,smallint,text[],tex
 ;
 -- SELECT osmc.update_coverage_isolevel3_161c('BR-PA-Altamira',0::smallint,'{21G,62H,63G,63H,68G,68H,69G,69H,6AG,6AH,6BG,6BH}'::text[],'{211FP,211FS,211FT,211FV,211FZ,2135N,2135Q,211K,211L,211M,213K,214L}'::text[]);
 
-
+-- gerar string a partir dos bits e não do case prefix
 CREATE or replace FUNCTION osmc.generate_cover_csv(
   p_isolabel_ext text,
   p_path text

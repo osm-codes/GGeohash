@@ -277,43 +277,76 @@ CREATE or replace FUNCTION osmc.encode_16h1c(
       THEN
       (
         ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
-          "08": "8", "09": "9", "0A": "A", "0B": "B", "0C": "C", "0D": "D", "0E": "E", "0F": "F",
-          "10": "F", "11": "F", "12": "j", "13": "k", "14": "l", "15": "m", "16": "n", "17": "p",
-          "18": "q", "19": "r", "1A": "s", "1B": "t", "1C": "v", "1D": "z"}'::jsonb)->>(substring(p_code,1,2))
+          "08": "8", "09": "9", "0a": "a", "0b": "b", "0c": "c", "0d": "d", "0e": "e", "0f": "f",
+          "10": "f", "11": "f", "12": "j", "13": "k", "14": "l", "15": "m", "16": "n", "17": "p",
+          "18": "q", "19": "r", "1a": "s", "1b": "t", "1c": "v", "1d": "z"}'::jsonb)->>(substring(p_code,1,2))
       )
       -- tr g->E, h->5, j->0
-      WHEN p_jurisd_base_id = 858 AND length(p_code) > 2 AND substring(p_code,1,3) IN ('100','101','102','10J','10N','10P', '12A','12B','12T', '11M','11V','11Z','11C','11D','11E','11F')
+      WHEN p_jurisd_base_id = 858 AND length(p_code) > 2 AND substring(p_code,1,3) IN ('100','101','102','10j','10n','10p', '12a','12b','12t', '11m','11v','11z','11c','11d','11e','11f')
       THEN
       (
-        ('{"10": "E", "11": "5", "12": "0"}'::jsonb)->>(substring(p_code,1,2))
+        ('{"10": "e", "11": "5", "12": "0"}'::jsonb)->>(substring(p_code,1,2))
       )
       WHEN p_jurisd_base_id = 858 AND length(p_code) > 2 AND substring(p_code,1,3) NOT IN (
-      '0E0','0E1','0E2','0EN','0EJ','0EP',
-      '00A','00B','00T',
-      '05M','05V','05Z','05C','05D','05E','05F'
+      '0e0','0e1','0e2','0en','0ej','0ep',
+      '00a','00b','00t',
+      '05m','05v','05z','05c','05d','05e','05f'
 
-      '100','101','102','10J','10N','10P',
-      '12A','12B','12T',
-      '11M','11V','11Z','11C','11D','11E','11F'
+      '100','101','102','10j','10n','10p',
+      '12a','12b','12t',
+      '11m','11v','11z','11c','11d','11e','11f'
       )
       THEN
       (
         ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
-          "08": "8", "09": "9", "0A": "A", "0B": "B", "0C": "C", "0D": "D", "0E": "E", "0F": "F"}'::jsonb)->>(substring(p_code,1,2))
+          "08": "8", "09": "9", "0a": "a", "0b": "b", "0c": "c", "0d": "d", "0e": "e", "0f": "f"}'::jsonb)->>(substring(p_code,1,2))
       )
       WHEN length(p_code) = 2
       THEN
       (
         ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
-          "08": "8", "09": "9", "0A": "A", "0B": "B", "0C": "C", "0D": "D", "0E": "E", "0F": "F",
+          "08": "8", "09": "9", "0a": "a", "0b": "b", "0c": "c", "0d": "d", "0e": "e", "0f": "f",
           "10": "g", "11": "h", "12": "j", "13": "k", "14": "l", "15": "m", "16": "n", "17": "p",
-          "18": "q", "19": "r", "1A": "s", "1B": "t", "1C": "v", "1D": "z"}'::jsonb)->>(substring(p_code,1,2))
+          "18": "q", "19": "r", "1a": "s", "1b": "t", "1c": "v", "1d": "z"}'::jsonb)->>(substring(p_code,1,2))
       )
-    END || upper(substring(p_code,3))
+    END || substring(p_code,3)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_16h1c(text,int)
   IS 'Encodes ghosts in BR and UY.'
 ;
+
+CREATE or replace FUNCTION osmc.decode_16h1c(
+  p_code text,
+  p_iso  text
+) RETURNS text AS $wrap$
+  SELECT
+    CASE
+      -- fl,ft,fs,fa,fb,f8,f9: tr f -> 0f
+      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fl','ft','fs','fa','fb','f8','f9') THEN ('0F')
+      -- fq,f4,f5: tr f -> h
+      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fq','f4','f5')                     THEN ('11')
+      -- fr,f6,f7: tr f -> g
+      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fr','f6','f7')                     THEN ('10')
+
+      -- e0,e1,e2: tr f -> g
+      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('e0','e1','e2','ej','en','ep')      THEN ('10')
+      -- ee,ed,ef: tr 0 -> j
+      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('0a','0b','0t')                     THEN ('12')
+      -- ,,: tr 5 -> h
+      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('5m','5v','5z','5c','5d','5e','5f') THEN ('11')
+      ELSE
+      (
+        ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
+          "8": "08", "9": "09", "a": "0a", "b": "0b", "c": "0c", "d": "0d", "e": "0e", "f": "0f",
+          "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
+          "q": "18", "r": "19", "s": "1a", "t": "1b", "v": "1c", "z": "1d"}'::jsonb)->>(substring(p_code,1,1))
+      )
+    END || substring(p_code,2)
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.decode_16h1c(text,text)
+  IS 'Decodes ghosts in BR and UY.'
+;
+-- SELECT osmc.decode_16h1c('fl','BR');
 
 -- -- :
 
@@ -390,7 +423,7 @@ CREATE or replace FUNCTION osmc.encode(
       END AS base,
 
       CASE
-      WHEN p_base IN (16,17,18) THEN upper(natcod.vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,16))
+      WHEN p_base IN (16,17,18) THEN natcod.vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,16)
       ELSE                      upper(natcod.vbit_to_strstd(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,'32nvu'))
       END AS code,
 
@@ -520,7 +553,7 @@ CREATE or replace FUNCTION osmc.encode(
 
     WHERE
     CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN (
-    '0EG','10G','12G','00L','12L','0EJ','05H','11H'
+    '0eg','10g','12g','00l','12l','0ej','05h','11h'
     ) ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode(geometry(POINT),int,int,int,int,int[],varbit,int,boolean)
@@ -617,7 +650,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
            WHEN p_base = 18 THEN 'base16h1c'
            ELSE                  'base16h'
       END AS base,
-      upper(natcod.vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,16)) AS code,
+      natcod.vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,16) AS code,
       p_l0code || bit_string AS codebits
       FROM ggeohash.encode3(ST_X(p_geom),ST_Y(p_geom),p_bbox,p_bit_length,p_lonlat) r(bit_string)
     ) c
@@ -632,7 +665,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
             SELECT jsonb_agg(
                 ST_AsGeoJSONb(ST_Transform_resilient((CASE WHEN p_grid_size % 2 = 1 THEN ST_Centroid(geom) ELSE geom END),4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
-                        'code', upper(ghs2),
+                        'code', ghs2,
                         'code_subcell', (CASE WHEN length(code2) = length(ghs2) THEN substr(ghs2,length(code2),length(ghs2)) ELSE substr(ghs2,length(code2)+1,length(ghs2)) END) ,
                         'prefix', code2,
                         'area', ST_Area(geom),
@@ -663,7 +696,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
 
     WHERE
     CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN (
-    '0EG','10G','12G','00L','12L','0EJ','05H','11H'
+    '0eg','10g','12g','00l','12l','0ej','05h','11h'
     ) ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.osmcode_encode_scientific(geometry(POINT),int,int,int,int,int[],varbit,int,boolean)
@@ -824,9 +857,9 @@ CREATE or replace FUNCTION api.osmcode_encode_scientific(
   SELECT
     CASE split_part(p_isolabel_ext,'-',1)
     WHEN 'BR' THEN osmc.encode_scientific_br(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),952019),u[4],p_base,grid)
-    WHEN 'CO' THEN osmc.encode_scientific_co(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),9377)  ,u[4],p_base,grid)
-    WHEN 'UY' THEN osmc.encode_scientific_uy(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),32721),u[4],p_base,grid)
-    WHEN 'EC' THEN osmc.encode_scientific_ec(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),32717),u[4],p_base,grid)
+    WHEN 'CO' THEN osmc.encode_scientific_co(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),  9377),u[4],p_base,grid)
+    WHEN 'UY' THEN osmc.encode_scientific_uy(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32721),u[4],p_base,grid)
+    WHEN 'EC' THEN osmc.encode_scientific_ec(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32717),u[4],p_base,grid)
     END
   FROM ( SELECT str_geouri_decode(uri) ) t(u)
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -1126,7 +1159,7 @@ COMMENT ON FUNCTION api.osmcode_encode_postal(text,int,text)
 -- osmcode decode:
 
 CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
-   p_code       text, -- e.g.: '645' in 16h1c
+   p_code       text, -- e.g.: '645' or list '645,643' in 16h1c
    p_iso        text, -- e.g.: 'BR'
    p_base       int  DEFAULT 16
 ) RETURNS jsonb AS $f$
@@ -1137,7 +1170,7 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
             SELECT jsonb_agg(
                 ST_AsGeoJSONb(ST_Transform_resilient(v.geom,4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
-                        'code', CASE WHEN p_base = 18 THEN c.code16h1c ELSE c.code16h END,
+                        'code', code_tru,
                         'area', ST_Area(v.geom),
                         'side', SQRT(ST_Area(v.geom)),
                         'truncated_code',truncated_code,
@@ -1149,60 +1182,43 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
                     )::jsonb) AS gj
             FROM
             (
-              SELECT DISTINCT upper(p_iso) AS upper_p_iso,
+              SELECT DISTINCT code16h,
 
+              -- trunca
               CASE
-                WHEN length(code16h) > 12 AND upper(p_iso) IN ('BR')           THEN substring(code16h,1,12)
-                WHEN length(code16h) > 11 AND upper(p_iso) IN ('EC','CO','UY') THEN substring(code16h,1,11)
-                ELSE code16h
-              END AS code16h,
+                WHEN p_base <> 18 AND length(code16h) > 12 AND up_iso IN ('BR')           THEN substring(code16h,1,12)
+                WHEN p_base <> 18 AND length(code16h) > 11 AND up_iso IN ('EC','CO','UY') THEN substring(code16h,1,11)
+                WHEN p_base =  18 AND length(code)    > 11 AND up_iso IN ('BR')           THEN substring(code,1,11)
+                WHEN p_base =  18 AND length(code)    > 10 AND up_iso IN ('UY')           THEN substring(code,1,10)
+                ELSE (CASE WHEN p_base=18 THEN code ELSE code16h END)
+              END AS code_tru,
+
+              -- flag
               CASE
-                WHEN length(code16h) > 12 AND upper(p_iso) IN ('BR')           THEN TRUE
-                WHEN length(code16h) > 11 AND upper(p_iso) IN ('EC','CO','UY') THEN TRUE
+                WHEN p_base <> 18 AND length(code16h) > 12 AND up_iso IN ('BR')           THEN TRUE
+                WHEN p_base <> 18 AND length(code16h) > 11 AND up_iso IN ('EC','CO','UY') THEN TRUE
+                WHEN p_base =  18 AND length(code)    > 11 AND up_iso IN ('BR')           THEN TRUE
+                WHEN p_base =  18 AND length(code)    > 10 AND up_iso IN ('UY')           THEN TRUE
                 ELSE NULL
               END AS truncated_code,
+
+              -- vbit code16h
               CASE
-                WHEN length(code16h) > 12 AND upper(p_iso) IN ('BR')           THEN natcod.baseh_to_vbit(substring(code16h,1,12),16)
-                WHEN length(code16h) > 11 AND upper(p_iso) IN ('EC','CO','UY') THEN natcod.baseh_to_vbit(substring(code16h,1,11),16)
+                WHEN length(code16h) > 12 AND up_iso IN ('BR')           THEN natcod.baseh_to_vbit(substring(code16h,1,12),16)
+                WHEN length(code16h) > 11 AND up_iso IN ('EC','CO','UY') THEN natcod.baseh_to_vbit(substring(code16h,1,11),16)
                 ELSE natcod.baseh_to_vbit(code16h,16)
               END AS codebits,
-              CASE
-                WHEN length(code16h) > 11 AND upper(p_iso) IN ('BR') THEN substring(code16h1c,1,11)
-                WHEN length(code16h) > 10 AND upper(p_iso) IN ('UY') THEN substring(code16h1c,1,10)
-                ELSE code16h1c
-              END AS code16h1c
+
+              code,up_iso
 
               FROM
               (
-                SELECT code AS code16h1c,
-                CASE
-                  WHEN p_base = 18
-                  THEN
-                    CASE
-                      -- FL,FT,FS,FA,FB,F8,F9: tr F -> 0F
-                      WHEN upper(p_iso) = 'BR' AND substring(code,1,2) IN ('FL','FT','FS','FA','FB','F8','F9') THEN ('0F')
-                      -- FQ,F4,F5: tr F -> h
-                      WHEN upper(p_iso) = 'BR' AND substring(code,1,2) IN ('FQ','F4','F5')                     THEN ('11')
-                      -- FR,F6,F7: tr F -> g
-                      WHEN upper(p_iso) = 'BR' AND substring(code,1,2) IN ('FR','F6','F7')                     THEN ('10')
-
-                      -- E0,E1,E2: tr F -> g
-                      WHEN upper(p_iso) = 'UY' AND substring(code,1,2) IN ('E0','E1','E2','EJ','EN','EP')      THEN ('10')
-                      -- EE,ED,EF: tr 0 -> j
-                      WHEN upper(p_iso) = 'UY' AND substring(code,1,2) IN ('0A','0B','0T')                     THEN ('12')
-                      -- ,,: tr 5 -> h
-                      WHEN upper(p_iso) = 'UY' AND substring(code,1,2) IN ('5M','5V','5Z','5C','5D','5E','5F') THEN ('11')
-                      ELSE
-                      (
-                        ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
-                          "8": "08", "9": "09", "A": "0A", "B": "0B", "C": "0C", "D": "0D", "E": "0E", "F": "0F",
-                          "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
-                          "q": "18", "r": "19", "s": "1A", "t": "1B", "v": "1C", "z": "1D"}'::jsonb)->>(substring(code,1,1))
-                      )
-                    END || substring(code,2)
-                  ELSE code
-                END AS code16h
-                    FROM regexp_split_to_table(upper(p_code),',') code
+                SELECT code, upper(p_iso) AS up_iso,
+                        CASE
+                          WHEN p_base = 18 THEN osmc.decode_16h1c(code,upper(p_iso))
+                          ELSE code
+                        END AS code16h
+                FROM regexp_split_to_table(lower(p_code),',') code
               ) u
             ) c,
             LATERAL
@@ -1210,16 +1226,16 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
               SELECT ggeohash.draw_cell_bybox(
                         ggeohash.decode_box2(
                          substring(codebits from 9) -- 8 bits base16h
-                         ,bbox, CASE WHEN c.upper_p_iso='EC' THEN TRUE ELSE FALSE END)
+                         ,bbox, CASE WHEN c.up_iso='EC' THEN TRUE ELSE FALSE END)
                     ,false,ST_SRID(geom)
                     ) AS geom
               FROM osmc.coverage
-              WHERE isolabel_ext = c.upper_p_iso -- cobertura nacional apenas
+              WHERE isolabel_ext = c.up_iso -- cobertura nacional apenas
                 AND ( ( (id::bit(64)<<27)::bit(8) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h, prefixo conforme base
             ) v
 
             WHERE
-            CASE WHEN upper_p_iso = 'UY' THEN c.code16h NOT IN ('0EG','10G','12G','00L','12L','0EJ','05H','11H') ELSE TRUE END
+            CASE WHEN up_iso = 'UY' THEN c.code16h NOT IN ('0eg','10g','12g','00l','12l','0ej','05h','11h') ELSE TRUE END
           )
       )
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -1311,7 +1327,7 @@ CREATE or replace FUNCTION api.osmcode_decode_postal_absolute(
             ON TRUE
 
             WHERE
-            CASE WHEN upper_p_iso = 'UY' THEN c.code NOT IN ('0EG','10G','12G','00L','12L','0EJ','05H','11H') ELSE TRUE END
+            CASE WHEN upper_p_iso = 'UY' THEN natcod.vbit_to_baseh('000'||codebits,16) NOT IN ('0eg','10g','12g','00l','12l','0ej','05h','11h') ELSE TRUE END --verificar
           )
       )
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -1385,7 +1401,9 @@ CREATE or replace FUNCTION api.osmcode_decode_postal(
               END AS short_code
               FROM
               (
-                  SELECT jurisd_local_id, jurisd_base_id, co.isolabel_ext, split_part(co.isolabel_ext,'-',1) AS country_iso, natcod.vbit_to_strstd(substring(natcod.baseh_to_vbit(prefix,16) from 4),'32nvu') || upper(substring(p_code,2)) AS code
+                  SELECT jurisd_local_id, jurisd_base_id, co.isolabel_ext,
+                         split_part(co.isolabel_ext,'-',1) AS country_iso,
+                         natcod.vbit_to_strstd(substring(natcod.baseh_to_vbit(prefix,16) from 4),'32nvu') || upper(substring(p_code,2)) AS code --com varbit nao precisara de baseh_to_vbit
                   FROM osmc.coverage co
                   LEFT JOIN optim.jurisdiction ju
                   ON co.isolabel_ext = ju.isolabel_ext
