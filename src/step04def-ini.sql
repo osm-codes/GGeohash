@@ -1,112 +1,154 @@
 ------------------
 -- Table coverage:
 
--- L0cover COLOMBIA
---DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 170::bit(10);
-INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
-SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
-        (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-        rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        'CO',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
-FROM
-(
-  SELECT 170 AS jurisd_base_id,prefix,bbox,geom_country,
-    ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,9377),geom_country) AS geom,
-    ggeohash.draw_cell_bybox(bbox,false,9377) AS geom_cell
-  FROM unnest
-      (
-        '{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}'::text[],
-        array[2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42]
-      ) t(prefix,quadrant),
-      LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,3678500,970000,524288)) u(bbox),
-      LATERAL (
-        SELECT ST_UNION(geom)
-        FROM
-        (
-          SELECT ST_Transform(geom,9377) AS geom FROM optim.jurisdiction_eez           WHERE isolabel_ext IN ('CO','CO/JM')
-
-          UNION
-
-          SELECT ST_Transform(geom,9377) AS geom FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext = 'CO' AND jurisd_base_id = 170
-        ) x
-      ) r(geom_country)
-  WHERE quadrant IS NOT NULL
-) y
-ORDER BY 1
-;
-
-
--- L0cover BRASIL
---DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 76::bit(10);
-INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
-SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
-        (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-        rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        'BR',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
-FROM
-(
-    SELECT 76 AS jurisd_base_id, prefix, bbox,geom_country,
-      ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,952019),geom_country) AS geom,
-      ggeohash.draw_cell_bybox(bbox,false,952019) AS geom_cell
-    FROM unnest
-        (
-        '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
-        array[20,21,22,23,15,16,17,18,19,11,12,13,6,7,8,2,24,14]
-        ) t(prefix,quadrant),
-        LATERAL (SELECT osmc.ij_to_bbox(quadrant%5,quadrant/5,2715000,6727000,1048576)) u(bbox),
-        LATERAL (SELECT ST_Transform(geom,952019) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'BR' AND jurisd_base_id = 76) r(geom_country)
-    WHERE quadrant IS NOT NULL
-) y
-ORDER BY 1
-;
-
--- L0cover URUGUAI
---DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 858::bit(10);
-INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
-SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
-        (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-        rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        'UY',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
-FROM
-(
-  SELECT 858 AS jurisd_base_id,prefix,bbox,status,is_overlay,geom_country,
-    ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,32721),geom_country) AS geom,
-    ggeohash.draw_cell_bybox(bbox,false,32721) AS geom_cell
-  FROM unnest
-      (
-        '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
-        array[40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3]
-      ) t(prefix,quadrant),
-      LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,353000,6028000,131072)) u(bbox),
-      LATERAL (SELECT ST_Transform(geom,32721) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'UY' AND jurisd_base_id = 858) r(geom_country)
-  WHERE quadrant IS NOT NULL
-) z
-;
-
--- L0cover ECUADOR
---DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 218::bit(10);
-INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
-SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
-        (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-        rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-        'EC',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
-FROM
-(
+CREATE or replace FUNCTION osmc.L0cover_upsert_br() RETURNS text AS $f$
+  -- L0cover BRASIL
+  DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 76::bit(10);
+  INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
+  SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
+          (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
+          rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
+          'BR',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
+  FROM
   (
-    SELECT 218 AS jurisd_base_id,prefix,bbox,geom_country,
-      ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,32717),geom_country) AS geom,
-      ggeohash.draw_cell_bybox(bbox,false,32717) AS geom_cell
+      SELECT 76 AS jurisd_base_id, prefix, bbox,geom_country,
+        ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,952019),geom_country) AS geom,
+        ggeohash.draw_cell_bybox(bbox,false,952019) AS geom_cell
+      FROM unnest
+          (
+          '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
+          array[20,21,22,23,15,16,17,18,19,11,12,13,6,7,8,2,24,14]
+          ) t(prefix,quadrant),
+          LATERAL (SELECT osmc.ij_to_bbox(quadrant%5,quadrant/5,2715000,6727000,1048576)) u(bbox),
+          LATERAL (SELECT ST_Transform(geom,952019) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'BR' AND jurisd_base_id = 76) r(geom_country)
+      WHERE quadrant IS NOT NULL
+  ) y
+  ORDER BY 1
+  RETURNING 'Ok.'
+  ;
+$f$ LANGUAGE SQL;
+COMMENT ON FUNCTION osmc.L0cover_upsert_br()
+  IS 'Upsert L0cover from BR.'
+;
+
+CREATE or replace FUNCTION osmc.L0cover_upsert_co() RETURNS text AS $f$
+  -- L0cover COLOMBIA
+  DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 170::bit(10);
+  INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
+  SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
+          (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
+          rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
+          'CO',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
+  FROM
+  (
+    SELECT 170 AS jurisd_base_id,prefix,bbox,geom_country,
+      ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,9377),geom_country) AS geom,
+      ggeohash.draw_cell_bybox(bbox,false,9377) AS geom_cell
     FROM unnest
         (
-        '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
-        array[60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6]
+          '{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}'::text[],
+          array[2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42]
         ) t(prefix,quadrant),
-        LATERAL (SELECT ARRAY[ -870000 + (quadrant%10)*262144, 9401000 + (quadrant/10)*(131072), -870000 + (quadrant%10)*262144+262144, 9401000 + (quadrant/10)*(131072)+131072 ]) u(bbox),
-        LATERAL (SELECT ST_Transform(geom,32717) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'EC' AND jurisd_base_id = 218) r(geom_country)
+        LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,3678500,970000,524288)) u(bbox),
+        LATERAL (
+          SELECT ST_UNION(geom)
+          FROM
+          (
+            SELECT ST_Transform(geom,9377) AS geom FROM optim.jurisdiction_eez           WHERE isolabel_ext IN ('CO','CO/JM')
+
+            UNION
+
+            SELECT ST_Transform(geom,9377) AS geom FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext = 'CO' AND jurisd_base_id = 170
+          ) x
+        ) r(geom_country)
     WHERE quadrant IS NOT NULL
-  )
-) z
+  ) y
+  ORDER BY 1
+
+  RETURNING 'Ok.'
+  ;
+$f$ LANGUAGE SQL;
+COMMENT ON FUNCTION osmc.L0cover_upsert_co()
+  IS 'Upsert L0cover from CO.'
 ;
+
+CREATE or replace FUNCTION osmc.L0cover_upsert_ec() RETURNS text AS $f$
+  -- L0cover ECUADOR
+  DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 218::bit(10);
+  INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
+  SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
+          (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
+          rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
+          'EC',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
+  FROM
+  (
+    (
+      SELECT 218 AS jurisd_base_id,prefix,bbox,geom_country,
+        ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,32717),geom_country) AS geom,
+        ggeohash.draw_cell_bybox(bbox,false,32717) AS geom_cell
+      FROM unnest
+          (
+          '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
+          array[60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6]
+          ) t(prefix,quadrant),
+          LATERAL (SELECT ARRAY[ -870000 + (quadrant%10)*262144, 9401000 + (quadrant/10)*(131072), -870000 + (quadrant%10)*262144+262144, 9401000 + (quadrant/10)*(131072)+131072 ]) u(bbox),
+          LATERAL (SELECT ST_Transform(geom,32717) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'EC' AND jurisd_base_id = 218) r(geom_country)
+      WHERE quadrant IS NOT NULL
+    )
+  ) z
+  RETURNING 'Ok.'
+  ;
+$f$ LANGUAGE SQL;
+COMMENT ON FUNCTION osmc.L0cover_upsert_ec()
+  IS 'Upsert L0cover from .'
+;
+
+CREATE or replace FUNCTION osmc.L0cover_upsert_uy() RETURNS text AS $f$
+  -- L0cover URUGUAI
+  DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 858::bit(10);
+  INSERT INTO osmc.coverage(id,isolabel_ext,bbox,status,is_overlay,geom,geom_srid4326)
+  SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
+          (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
+          rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
+          'UY',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
+  FROM
+  (
+    SELECT 858 AS jurisd_base_id,prefix,bbox,geom_country,
+      ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,32721),geom_country) AS geom,
+      ggeohash.draw_cell_bybox(bbox,false,32721) AS geom_cell
+    FROM unnest
+        (
+          '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
+          array[40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3]
+        ) t(prefix,quadrant),
+        LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,353000,6028000,131072)) u(bbox),
+        LATERAL (SELECT ST_Transform(geom,32721) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'UY' AND jurisd_base_id = 858) r(geom_country)
+    WHERE quadrant IS NOT NULL
+  ) z
+  RETURNING 'Ok.'
+  ;
+$f$ LANGUAGE SQL;
+COMMENT ON FUNCTION osmc.L0cover_upsert_uy()
+  IS 'Upsert L0cover from UY.'
+;
+
+CREATE or replace FUNCTION osmc.L0cover_upsert(
+  p_iso text
+) RETURNS text AS $wrap$
+  SELECT
+    CASE split_part(p_iso,'-',1)
+    WHEN 'BR' THEN osmc.L0cover_upsert_br()
+    WHEN 'CO' THEN osmc.L0cover_upsert_co()
+    WHEN 'UY' THEN osmc.L0cover_upsert_uy()
+    WHEN 'EC' THEN osmc.L0cover_upsert_ec()
+    END
+    ;
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.L0cover_upsert(text)
+  IS 'Upsert L0cover from ISO.'
+;
+-- SELECT osmc.L0cover_upsert('BR');
+
 
 -- DE_PARA COVER
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
