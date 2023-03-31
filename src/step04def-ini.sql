@@ -15,16 +15,26 @@ FROM
     ggeohash.draw_cell_bybox(bbox,false,9377) AS geom_cell
   FROM unnest
       (
-      '{00,01,02,03,04,05,06,07,08,09,0A,0B,0C,0D,0E,0F,10,11,12,13,14,15,16,17,18,19,1A,1B,1C,1D,1E,1F}'::text[],
-      --'{0,1,2,3,4,5,6,7,8,9,B,C,D,F,G,H,J,K,L,M,N,P,Q,R,S,T,U,V,W,X,Y,Z}'::text[],
-      array[0,45,37,38,39,31,32,33,25,26,27,28,29,18,19,20,21,22,23,12,13,14,15,16,17,8,9,10,3,4]
+        '{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}'::text[],
+        array[2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42]
       ) t(prefix,quadrant),
-      LATERAL (SELECT osmc.ij_to_bbox(quadrant%6,quadrant/6,4180000,1035500,262144)) u(bbox),
-      LATERAL (SELECT ST_Transform(geom,9377) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'CO' AND jurisd_base_id = 170) r(geom_country)
-  WHERE quadrant IS NOT NULL AND quadrant > 0
+      LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,3678500,970000,524288)) u(bbox),
+      LATERAL (
+        SELECT ST_UNION(geom)
+        FROM
+        (
+          SELECT ST_Transform(geom,9377) AS geom FROM optim.jurisdiction_eez           WHERE isolabel_ext IN ('CO','CO/JM')
+
+          UNION
+
+          SELECT ST_Transform(geom,9377) AS geom FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext = 'CO' AND jurisd_base_id = 170
+        ) x
+      ) r(geom_country)
+  WHERE quadrant IS NOT NULL
 ) y
 ORDER BY 1
 ;
+
 
 -- L0cover BRASIL
 --DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 76::bit(10);
@@ -40,7 +50,7 @@ FROM
       ggeohash.draw_cell_bybox(bbox,false,952019) AS geom_cell
     FROM unnest
         (
-        '{00,01,02,03,04,05,06,07,08,09,0A,0B,0C,0D,0E,0F,10,11,12,13,14,15,16,17,18,19,1A,1B,1C,1D,1E,1F}'::text[],
+        '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
         array[20,21,22,23,15,16,17,18,19,11,12,13,6,7,8,2,24,14]
         ) t(prefix,quadrant),
         LATERAL (SELECT osmc.ij_to_bbox(quadrant%5,quadrant/5,2715000,6727000,1048576)) u(bbox),

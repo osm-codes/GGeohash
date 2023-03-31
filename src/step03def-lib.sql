@@ -320,11 +320,13 @@ COMMENT ON FUNCTION osmc.encode_16h1c(text,int)
 CREATE or replace FUNCTION osmc.encode_point_brazil(
   p_geom  geometry(POINT)
 ) RETURNS text AS $wrap$
-  SELECT (natcod.vbit_to_strstd((id::bit(64)<<30)::bit(5) || ggeohash.encode3(ST_X(cc),ST_Y(cc),bbox,40,false),'32nvu'))
-  FROM osmc.coverage, LATERAL (SELECT ST_Transform(p_geom,952019)) v(cc)
-  WHERE isolabel_ext = 'BR' -- 76, cover Brasil
-    AND ( (id::bit(64)<<24)::bit(2)  ) = b'00' -- only country cover
-    AND ST_Contains(geom_srid4326,p_geom)
+  SELECT
+    (
+      SELECT (natcod.vbit_to_strstd((id::bit(64)<<30)::bit(5) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,40,false),'32nvu'))
+      FROM osmc.coverage
+      WHERE isolabel_ext = 'BR' AND ST_Contains(geom,x)
+    )
+  FROM (SELECT ST_Transform(p_geom,952019)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_point_brazil(geometry(POINT))
   IS 'Encode Point for Brazil. base32, 8 digits'
@@ -333,16 +335,17 @@ COMMENT ON FUNCTION osmc.encode_point_brazil(geometry(POINT))
 CREATE or replace FUNCTION osmc.encode_point_colombia(
   p_geom  geometry(POINT)
 ) RETURNS text AS $wrap$
-  SELECT (natcod.vbit_to_strstd((id::bit(64)<<30)::bit(5) || ggeohash.encode3(ST_X(cc),ST_Y(cc),bbox,40,false),'32nvu'))
-  FROM osmc.coverage, LATERAL (SELECT ST_Transform(p_geom,9377)) v(cc)
-  WHERE isolabel_ext = 'CO' -- 170, cover Colombia
-    AND ( (id::bit(64)<<24)::bit(2)  ) = b'00' -- only country cover
-    AND ST_Contains(geom_srid4326,p_geom)
+  SELECT
+    (
+      SELECT (natcod.vbit_to_strstd((id::bit(64)<<30)::bit(5) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,40,false),'32nvu'))
+      FROM osmc.coverage
+      WHERE isolabel_ext = 'CO' AND ST_Contains(geom,x)
+    )
+  FROM (SELECT ST_Transform(p_geom,9377)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_point_colombia(geometry(POINT))
   IS 'Encode Point for Colombia. base32, 8 digits'
 ;
-
 
 CREATE or replace FUNCTION osmc.encode(
   p_geom       geometry(POINT),
@@ -726,7 +729,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
       ,u.bbox,u.l0code,170,FALSE)
   FROM
   (
-    SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
+    SELECT bbox, (id::bit(64)<<27)::bit(4) AS l0code -- 1 dígito base16h
     FROM osmc.coverage
     WHERE
         --     (id::bit(64)<<24)::bit(2) = 0::bit(2) -- cobertura nacional apenas
@@ -1461,6 +1464,7 @@ CREATE or replace FUNCTION api.jurisdiction_coverage(
             ELSE
               (
                 CASE
+                WHEN p_base IN (16,17,18) AND (osmc.str_geocodeiso_decode(p_iso))[2] = 'CO' THEN natcod.vbit_to_baseh((id::bit(64)<<27)::bit(4),16)
                 WHEN p_base IN (16,17,18) THEN natcod.vbit_to_baseh((id::bit(64)<<27)::bit(8),16)
                 ELSE                      natcod.vbit_to_strstd((id::bit(64)<<30)::bit(5),'32nvu')
                 END
