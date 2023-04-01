@@ -1,5 +1,5 @@
 --
---  Grade Estatistica/Postal
+--  Grade scientific/logistics
 --
 
 CREATE EXTENSION IF NOT EXISTS postgis;
@@ -85,20 +85,6 @@ COMMENT ON FUNCTION osmc.xy_to_ij(int[])
  IS 'Retorna célula da matriz que contem x,y.'
 ;
 --SELECT osmc.xy_to_ij(array[4442144,1297644,4180000,1035500,262144]);
-/*
-CREATE or replace FUNCTION osmc.xy_to_bbox(
-  x  int,
-  y  int,
-  x0 int, -- referencia de inicio do eixo x [x0,y0]
-  y0 int, -- referencia de inicio do eixo y [x0,y0]
-  s  int  -- lado da célula
-  ) RETURNS int[] AS $f$
-  SELECT osmc.ij_to_bbox(osmc.xy_to_ij(x,y,x0,y0,s))
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.xy_to_bbox(int,int,int,int,int)
- IS 'Retorna bbox da célula que contém x,y.'
-;*/
--- SELECT osmc.xy_to_bbox(4704288,1559788,4180000,1035500,262144);
 
 CREATE or replace  FUNCTION osmc.xy_to_quadrant(
   x  int,
@@ -264,7 +250,7 @@ COMMENT ON COLUMN osmc.coverage.geom_srid4326 IS 'Coverage cell geometry on 4326
 COMMENT ON TABLE osmc.coverage IS 'Jurisdictional coverage.';
 
 ------------------
--- encode:
+-- encode/decode 16h1c:
 
 CREATE or replace FUNCTION osmc.encode_16h1c(
   p_code           text,
@@ -348,7 +334,7 @@ COMMENT ON FUNCTION osmc.decode_16h1c(text,text)
 ;
 -- SELECT osmc.decode_16h1c('fr','BR');
 
--- -- :
+-- specific encode for b32nvu and 8 digits:
 
 CREATE or replace FUNCTION osmc.encode_point_brazil(
   p_geom  geometry(POINT)
@@ -362,7 +348,7 @@ CREATE or replace FUNCTION osmc.encode_point_brazil(
   FROM (SELECT ST_Transform(p_geom,952019)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_point_brazil(geometry(POINT))
-  IS 'Encode Point for Brazil. base32, 8 digits'
+  IS 'Encode Point for Brazil. base32nvu, 8 digits'
 ;
 
 CREATE or replace FUNCTION osmc.encode_point_colombia(
@@ -377,9 +363,10 @@ CREATE or replace FUNCTION osmc.encode_point_colombia(
   FROM (SELECT ST_Transform(p_geom,9377)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_point_colombia(geometry(POINT))
-  IS 'Encode Point for Colombia. base32, 8 digits'
+  IS 'Encode Point for Colombia. base32nvu, 8 digits'
 ;
 
+-- encode scientific:
 
 CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
   p_geom       geometry(POINT),
@@ -602,26 +589,7 @@ COMMENT ON FUNCTION osmc.encode_scientific_ec(geometry(POINT),float,int,int)
   IS 'Encodes geometry to EC Scientific OSMcode.'
 ;
 
-CREATE or replace FUNCTION api.osmcode_encode_scientific(
-  uri    text,
-  p_base int DEFAULT 16,
-  grid   int DEFAULT 0,
-  p_isolabel_ext text DEFAULT NULL
-) RETURNS jsonb AS $wrap$
-  SELECT
-    CASE split_part(p_isolabel_ext,'-',1)
-    WHEN 'BR' THEN osmc.encode_scientific_br(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),952019),u[4],p_base,grid)
-    WHEN 'CO' THEN osmc.encode_scientific_co(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),  9377),u[4],p_base,grid)
-    WHEN 'UY' THEN osmc.encode_scientific_uy(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32721),u[4],p_base,grid)
-    WHEN 'EC' THEN osmc.encode_scientific_ec(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32717),u[4],p_base,grid)
-    END
-  FROM ( SELECT str_geouri_decode(uri) ) t(u)
-$wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION api.osmcode_encode_scientific(text,int,int,text)
-  IS 'Encodes Geo URI to OSMcode. Wrap for osmcode_encode_context(geometry)'
-;
--- EXPLAIN ANALYZE SELECT api.osmcode_encode_scientific('geo:-15.5,-47.8;u=600000',18,'0','BR');
-
+-- encode logistics:
 
 CREATE or replace FUNCTION osmc.encode_postal(
   p_geom       geometry(POINT),
@@ -886,6 +854,8 @@ COMMENT ON FUNCTION osmc.encode_postal_ec(geometry(POINT),float,int,text)
   IS 'Encodes geometry to EC Postal OSMcode.'
 ;
 
+-- api encode:
+
 CREATE or replace FUNCTION api.osmcode_encode_postal(
   uri    text,
   grid   int DEFAULT 0,
@@ -907,6 +877,25 @@ COMMENT ON FUNCTION api.osmcode_encode_postal(text,int,text)
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode_postal('geo:-15.5,-47.8',0,'BR-GO-Planaltina');
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:-15.5,-47.8',32,0);
 
+CREATE or replace FUNCTION api.osmcode_encode_scientific(
+  uri    text,
+  p_base int DEFAULT 16,
+  grid   int DEFAULT 0,
+  p_isolabel_ext text DEFAULT NULL
+) RETURNS jsonb AS $wrap$
+  SELECT
+    CASE split_part(p_isolabel_ext,'-',1)
+    WHEN 'BR' THEN osmc.encode_scientific_br(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),952019),u[4],p_base,grid)
+    WHEN 'CO' THEN osmc.encode_scientific_co(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),  9377),u[4],p_base,grid)
+    WHEN 'UY' THEN osmc.encode_scientific_uy(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32721),u[4],p_base,grid)
+    WHEN 'EC' THEN osmc.encode_scientific_ec(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32717),u[4],p_base,grid)
+    END
+  FROM ( SELECT str_geouri_decode(uri) ) t(u)
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION api.osmcode_encode_scientific(text,int,int,text)
+  IS 'Encodes Geo URI to OSMcode. Wrap for osmcode_encode_context(geometry)'
+;
+-- EXPLAIN ANALYZE SELECT api.osmcode_encode_scientific('geo:-15.5,-47.8;u=600000',18,'0','BR');
 
 CREATE or replace FUNCTION api.osmcode_encode(
   uri    text,
@@ -938,7 +927,7 @@ COMMENT ON FUNCTION api.osmcode_encode(text,int,int)
 
 
 ------------------
--- osmcode decode:
+-- api decode:
 
 CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
    p_code       text, -- e.g.: '645' or list '645,643' in 16h1c
@@ -1230,7 +1219,7 @@ COMMENT ON FUNCTION api.osmcode_decode_postal(text)
 
 
 ------------------
--- jurisdiction coverage:
+-- api jurisdiction coverage:
 
 CREATE or replace FUNCTION api.jurisdiction_coverage(
    p_iso  text,
