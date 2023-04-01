@@ -380,240 +380,6 @@ COMMENT ON FUNCTION osmc.encode_point_colombia(geometry(POINT))
   IS 'Encode Point for Colombia. base32, 8 digits'
 ;
 
-CREATE or replace FUNCTION osmc.encode(
-  p_geom       geometry(POINT),
-  p_base       int     DEFAULT 32,
-  p_bit_length int     DEFAULT 40,
-  p_srid       int     DEFAULT 9377,
-  p_grid_size  int     DEFAULT 32,
-  p_bbox       int[] DEFAULT array[0.,0.,0.,0.],
-  p_l0code     varbit  DEFAULT b'0',
-  p_jurisd_base_id int DEFAULT 170,
-  p_lonlat     boolean DEFAULT false  -- false: latLon, true: lonLat
-) RETURNS jsonb AS $f$
-    SELECT jsonb_build_object(
-      'type', 'FeatureCollection',
-      'features',
-        (
-          (ST_AsGeoJSONb(ST_Transform_resilient(geom_cell,4326,0.005),8,0,null,
-              jsonb_strip_nulls(jsonb_build_object(
-                  'code', CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END,
-                  'area', ST_Area(geom_cell),
-                  'side', SQRT(ST_Area(geom_cell)),
-                  'base', base,
-                  'short_code', short_code,
-                  'jurisd_local_id', jurisd_local_id,
-                  'jurisd_base_id', p_jurisd_base_id,
-                  'scientic_code', CASE
-                                    WHEN p_base = 32 AND p_jurisd_base_id     IN (76,868) THEN osmc.encode_16h1c(natcod.vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16),p_jurisd_base_id)
-                                    WHEN p_base = 32 AND p_jurisd_base_id NOT IN (76,868) THEN natcod.vbit_to_baseh('000' ||CASE WHEN p_bit_length = 0 THEN p_l0code ELSE codebits END,16)
-                                    ELSE NULL END
-                  ))
-          )::jsonb) || m.subcells
-        )
-      )
-    FROM
-    (
-      SELECT bit_string,
-      ggeohash.draw_cell_bybox((CASE WHEN p_bit_length = 0 THEN p_bbox ELSE ggeohash.decode_box2(bit_string,p_bbox,p_lonlat) END),false,p_srid) AS geom_cell,
-      CASE WHEN p_base = 16 THEN 'base16h'
-           WHEN p_base = 17 THEN 'base16'
-           WHEN p_base = 18 THEN 'base16h1c'
-           ELSE                  'base32'
-      END AS base,
-
-      CASE
-      WHEN p_base IN (16,17,18) THEN natcod.vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,16)
-      ELSE                      upper(natcod.vbit_to_strstd(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,'32nvu'))
-      END AS code,
-
-      p_l0code || bit_string AS codebits
-      FROM ggeohash.encode3(ST_X(p_geom),ST_Y(p_geom),p_bbox,p_bit_length,p_lonlat) r(bit_string)
-    ) c
-    -- responsável por subcélulas
-    LEFT JOIN LATERAL
-    (
-      SELECT
-        CASE
-        WHEN p_grid_size > 0 AND SQRT(ST_Area(c.geom_cell)) > 1
-        THEN
-          (
-            SELECT jsonb_agg(
-                ST_AsGeoJSONb(ST_Transform_resilient((CASE WHEN p_grid_size % 2 = 1 THEN ST_Centroid(geom) ELSE geom END),4326,0.005),8,0,null,
-                    jsonb_strip_nulls(jsonb_build_object(
-                        'code', upper(ghs2),
-                        'code_subcell', substr(ghs2,length(code2)+1,length(ghs2)),
-                        'prefix', code2,
-                        'area', ST_Area(geom),
-                        'side', SQRT(ST_Area(geom)),
-                        'base', base,
-                        'short_code', tt.short_code,
-                        'jurisd_base_id', p_jurisd_base_id,
-                        'jurisd_local_id', ss.jurisd_local_id
-                        ))
-                    )::jsonb)
-              FROM
-             (
-              SELECT geom, ghs,
-                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(ghs,p_jurisd_base_id) ELSE ghs END AS ghs2,
-                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END AS code2
-                FROM osmc.ggeohash_GeomsFromVarbit(
-                      c.bit_string,p_l0code,false,p_srid,CASE WHEN p_base IN (16,17,18) THEN 16 ELSE 32 END,
-                      CASE
-                        WHEN p_grid_size % 2 = 1 THEN p_grid_size - 1
-                        ELSE p_grid_size
-                      END,
-                      p_bbox,
-                      p_lonlat
-                      )
-             ) xx
-              -- responsável pelo código curto na grade postal das subcélulas
-              LEFT JOIN LATERAL
-              (
-                SELECT isolabel_ext, (isolabel_ext || '~' ||
-                  CASE
-                  WHEN p_base IN (16,17,18)
-                  THEN natcod.vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
-                  ELSE natcod.vbit_to_strstd( (id::bit(64)<<27)::bit(5),'32nvu')
-                  END
-                || (CASE WHEN length(xx.ghs) = length(prefix32) THEN '' ELSE substr(xx.ghs,length(prefix32),length(xx.ghs)) END) ) AS short_code
-                FROM osmc.coverage rr, LATERAL ( SELECT natcod.vbit_to_strstd( substring(natcod.baseh_to_vbit(prefix,16) from 4),'32nvu')) n(prefix32)
-                WHERE
-                    (id::bit(64))::bit(10) = p_jurisd_base_id::bit(10)
-                AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
-                AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(rr.geom,p_geom) ELSE TRUE  END
-                -- (   ( (id::bit(64)<<32)::bit(20) #  codebits::bit(20)           ) = 0::bit(20)
-                --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(15))::bit(20) ) = 0::bit(20)
-                --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(10))::bit(20) ) = 0::bit(20)
-                --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(5) )::bit(20) ) = 0::bit(20)
-                -- )
-                AND
-                (  prefix32 = substr(xx.ghs,1,5)
-                OR prefix32 = substr(xx.ghs,1,4)
-                OR prefix32 = substr(xx.ghs,1,3)
-                OR prefix32 = substr(xx.ghs,1,2)
-                OR prefix32 = substr(xx.ghs,1,1)
-                )
-
-                ORDER BY length(prefix) DESC
-              ) tt
-              ON TRUE
-              -- infos de jurisdiction
-              LEFT JOIN LATERAL
-              (
-                SELECT jurisd_local_id
-                FROM optim.jurisdiction
-                WHERE isolabel_ext = tt.isolabel_ext
-              ) ss
-              ON TRUE
-          )
-        ELSE '[]'::jsonb
-        END AS subcells
-    ) m
-    ON TRUE
-    -- responsável pelo código curto na grade postal
-    LEFT JOIN LATERAL
-    (
-      SELECT isolabel_ext, (isolabel_ext || '~' ||
-        CASE
-        WHEN p_base IN (16,17,18)
-        THEN natcod.vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
-        ELSE natcod.vbit_to_strstd( (id::bit(64)<<27)::bit(5),'32nvu')
-        END
-      || (CASE WHEN length(c.code) = length(prefix32) THEN '' ELSE substr(c.code,length(prefix32)+1,length(c.code)) END) ) AS short_code
-      FROM osmc.coverage r, LATERAL ( SELECT natcod.vbit_to_strstd( substring(natcod.baseh_to_vbit(prefix,16) from 4),'32nvu')) n(prefix32)
-      WHERE
-           (id::bit(64))::bit(10) = p_jurisd_base_id::bit(10)
-      AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2)
-      AND CASE WHEN (id::bit(64)<<26)::bit(1) <> b'0' THEN ST_Contains(r.geom,p_geom) ELSE TRUE  END
-      -- (   ( (id::bit(64)<<32)::bit(20) #  codebits::bit(20)           ) = 0::bit(20)
-      --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(15))::bit(20) ) = 0::bit(20)
-      --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(10))::bit(20) ) = 0::bit(20)
-      --  OR ( (id::bit(64)<<32)::bit(20) # (codebits::bit(5) )::bit(20) ) = 0::bit(20)
-      -- )
-      AND
-      (   prefix32 = substr(c.code,1,5)
-       OR prefix32 = substr(c.code,1,4)
-       OR prefix32 = substr(c.code,1,3)
-       OR prefix32 = substr(c.code,1,2)
-       OR prefix32 = substr(c.code,1,1)
-      )
-
-      ORDER BY length(prefix) DESC
-    ) t
-    ON TRUE
-    -- infos de jurisdiction
-    LEFT JOIN LATERAL
-    (
-      SELECT jurisd_local_id
-      FROM optim.jurisdiction
-      WHERE isolabel_ext = t.isolabel_ext
-    ) s
-    ON TRUE
-
-    WHERE
-    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode(geometry(POINT),int,int,int,int,int[],varbit,int,boolean)
-  IS 'Encodes geometry to OSMcode.'
-;
-
-CREATE or replace FUNCTION api.osmcode_encode(
-  uri    text,
-  p_base int DEFAULT 32,
-  grid   int DEFAULT 0
-) RETURNS jsonb AS $wrap$
-  SELECT osmc.encode(
-    ST_Transform(v.geom,u.srid),
-    p_base,
-    CASE
-    WHEN latLon[4] IS NOT NULL
-    THEN
-    (
-      SELECT
-      CASE
-        WHEN jurisd_base_id = 170 AND p_base = 32       AND x > 4 THEN ((x-4)/5)*5
-        WHEN jurisd_base_id = 170 AND p_base = 16       AND x > 4 THEN   x-4
-        WHEN jurisd_base_id = 858 AND p_base = 32       AND x > 6 THEN ((x-6)/5)*5
-        WHEN jurisd_base_id = 858 AND p_base = 17       AND x > 6 THEN ((x-6)/4)*4
-        WHEN jurisd_base_id = 858 AND p_base IN (16,18) AND x > 6 THEN   x-6
-        WHEN jurisd_base_id = 218 AND p_base = 32       AND x > 5 THEN ((x-5)/5)*5
-        WHEN jurisd_base_id = 218 AND p_base = 16       AND x > 5 THEN   x-5
-        WHEN jurisd_base_id = 76  AND p_base = 32                 THEN  (x/5)*5
-        WHEN jurisd_base_id = 76  AND p_base IN (16,18)           THEN   x
-        ELSE 0
-      END
-      FROM osmc.uncertain_base16h(latLon[4]::int) t(x)
-      )
-    ELSE 35
-    END,
-    u.srid,
-    grid,
-    u.bbox,
-    u.l0code,
-    u.jurisd_base_id,
-    CASE WHEN u.jurisd_base_id = 218 THEN TRUE ELSE FALSE END
-  )
-  FROM ( SELECT str_geouri_decode(uri) ) t(latLon),
-  LATERAL ( SELECT ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326) ) v(geom),
-  LATERAL
-  (
-    SELECT ((id::bit(64))::bit(10))::int AS jurisd_base_id, bbox, ST_SRID(geom) AS srid,
-        CASE
-        WHEN p_base IN (16,17,18) THEN (id::bit(64)<<27)::bit(8) -- 2 dígito  base16h
-        ELSE                           (id::bit(64)<<30)::bit(5) -- 1 dígito  base32
-        END AS l0code
-    FROM osmc.coverage
-    WHERE ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2) -- cobertura nacional apenas
-        AND ST_Contains(geom_srid4326,v.geom)
-  ) u
-$wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION api.osmcode_encode(text,int,int)
-  IS 'Encodes Geo URI to OSMcode. Wrap for osmcode_encode(geometry)'
-;
--- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:3.461,-76.577');
--- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:-15.5,-47.8');
-
 
 CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
   p_geom       geometry(POINT),
@@ -1141,6 +907,36 @@ COMMENT ON FUNCTION api.osmcode_encode_postal(text,int,text)
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode_postal('geo:-15.5,-47.8',0,'BR-GO-Planaltina');
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:-15.5,-47.8',32,0);
 
+
+CREATE or replace FUNCTION api.osmcode_encode(
+  uri    text,
+  p_base int DEFAULT 32,
+  grid   int DEFAULT 0
+) RETURNS jsonb AS $wrap$
+  SELECT
+    CASE
+      WHEN p_base = 32 THEN api.osmcode_encode_postal(uri,grid,isolabel_ext)
+      ELSE                  api.osmcode_encode_scientific(uri,p_base,grid,isolabel_ext)
+    END
+  FROM
+  (
+    SELECT
+      (
+      SELECT isolabel_ext
+      FROM osmc.coverage
+      WHERE ( (id::bit(64)<<24)::bit(2) ) = 0::bit(2) -- cobertura nacional apenas
+            AND ST_Contains(geom_srid4326,ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326))
+      ) AS isolabel_ext
+    FROM ( SELECT str_geouri_decode(uri) ) t(latLon)
+  ) x
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION api.osmcode_encode(text,int,int)
+  IS 'Encodes Geo URI to OSMcode.'
+;
+-- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:3.461,-76.577');
+-- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:-15.5,-47.8');
+
+
 ------------------
 -- osmcode decode:
 
@@ -1431,6 +1227,7 @@ COMMENT ON FUNCTION api.osmcode_decode_postal(text)
   IS 'Decode Postal OSMcode. Wrap for osmcode_decode_postal.'
 ;
 -- EXPLAIN ANALYZE SELECT api.osmcode_decode_postal('CO-Itagui~8HB');
+
 
 ------------------
 -- jurisdiction coverage:
