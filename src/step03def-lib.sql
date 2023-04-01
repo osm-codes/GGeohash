@@ -272,29 +272,29 @@ CREATE or replace FUNCTION osmc.encode_16h1c(
 ) RETURNS text AS $wrap$
   SELECT
     CASE
-      -- tr g->F, h->F
+      -- tr g->F, q->F
       WHEN p_jurisd_base_id = 76 AND length(p_code) > 2
       THEN
       (
         ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
-          "08": "8", "09": "9", "0a": "a", "0b": "b", "0c": "c", "0d": "d", "0e": "e", "0f": "f",
-          "10": "f", "11": "f", "12": "j", "13": "k", "14": "l", "15": "m", "16": "n", "17": "p",
-          "18": "q", "19": "r", "1a": "s", "1b": "t", "1c": "v", "1d": "z"}'::jsonb)->>(substring(p_code,1,2))
+           "08": "8", "09": "9", "0a": "a", "0b": "b", "0c": "c", "0d": "d", "0e": "e", "0f": "f",
+           "10": "f", "11": "f", "12": "h", "13": "m", "14": "r", "15": "v", "16": "j", "17": "k",
+           "18": "n", "19": "p", "1a": "s", "1b": "t", "1c": "z", "1d": "y"}'::jsonb)->>(substring(p_code,1,2))
       )
-      -- tr g->E, h->5, j->0
-      WHEN p_jurisd_base_id = 858 AND length(p_code) > 2 AND substring(p_code,1,3) IN ('100','101','102','10j','10n','10p', '12a','12b','12t', '11m','11v','11z','11c','11d','11e','11f')
+      -- tr g->E, q->5, h->0
+      WHEN p_jurisd_base_id = 858 AND length(p_code) > 2 AND substring(p_code,1,3) IN ('100','101','102','10h','10j','10k', '12a','12b','12t', '11v','11z','11y','11c','11d','11e','11f')
       THEN
       (
         ('{"10": "e", "11": "5", "12": "0"}'::jsonb)->>(substring(p_code,1,2))
       )
       WHEN p_jurisd_base_id = 858 AND length(p_code) > 2 AND substring(p_code,1,3) NOT IN (
-      '0e0','0e1','0e2','0en','0ej','0ep',
+      '0e0','0e1','0e2','0ej','0eh','0ek',
       '00a','00b','00t',
-      '05m','05v','05z','05c','05d','05e','05f'
+      '05v','05z','05y','05c','05d','05e','05f',
 
-      '100','101','102','10j','10n','10p',
+      '100','101','102','10h','10j','10k',
       '12a','12b','12t',
-      '11m','11v','11z','11c','11d','11e','11f'
+      '11v','11z','11y','11c','11d','11e','11f'
       )
       THEN
       (
@@ -306,8 +306,8 @@ CREATE or replace FUNCTION osmc.encode_16h1c(
       (
         ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
           "08": "8", "09": "9", "0a": "a", "0b": "b", "0c": "c", "0d": "d", "0e": "e", "0f": "f",
-          "10": "g", "11": "h", "12": "j", "13": "k", "14": "l", "15": "m", "16": "n", "17": "p",
-          "18": "q", "19": "r", "1a": "s", "1b": "t", "1c": "v", "1d": "z"}'::jsonb)->>(substring(p_code,1,2))
+          "10": "g", "11": "q", "12": "h", "13": "m", "14": "r", "15": "v", "16": "j", "17": "k",
+          "18": "n", "19": "p", "1a": "s", "1b": "t", "1c": "z", "1d": "y"}'::jsonb)->>(substring(p_code,1,2))
       )
     END || substring(p_code,3)
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -321,32 +321,32 @@ CREATE or replace FUNCTION osmc.decode_16h1c(
 ) RETURNS text AS $wrap$
   SELECT
     CASE
-      -- fl,ft,fs,fa,fb,f8,f9: tr f -> 0f
-      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fl','ft','fs','fa','fb','f8','f9') THEN ('0F')
-      -- fq,f4,f5: tr f -> h
-      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fq','f4','f5')                     THEN ('11')
-      -- fr,f6,f7: tr f -> g
-      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fr','f6','f7')                     THEN ('10')
+      -- fr,ft,fs,fa,fb,f8,f9: tr f -> 0f
+      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fr','ft','fs','fa','fb','f8','f9') THEN ('0f')
+      -- fn,f4,f5: tr f -> q
+      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fn','f4','f5')                     THEN ('11')
+      -- fp,f6,f7: tr f -> g
+      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fp','f6','f7')                     THEN ('10')
 
-      -- e0,e1,e2: tr f -> g
-      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('e0','e1','e2','ej','en','ep')      THEN ('10')
-      -- ee,ed,ef: tr 0 -> j
+      -- e0,e1,e2,eh,ej,ek: tr f -> g
+      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('e0','e1','e2','eh','ej','ek')      THEN ('10')
+      -- 0a,0b,0t: tr 0 -> h
       WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('0a','0b','0t')                     THEN ('12')
-      -- ,,: tr 5 -> h
-      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('5m','5v','5z','5c','5d','5e','5f') THEN ('11')
+      -- 5v,5z,5y,5c,5d,5e,5f: tr 5 -> q
+      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('5v','5z','5y','5c','5d','5e','5f') THEN ('11')
       ELSE
       (
         ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
-          "8": "08", "9": "09", "a": "0a", "b": "0b", "c": "0c", "d": "0d", "e": "0e", "f": "0f",
-          "g": "10", "h": "11", "j": "12", "k": "13", "l": "14", "m": "15", "n": "16", "p": "17",
-          "q": "18", "r": "19", "s": "1a", "t": "1b", "v": "1c", "z": "1d"}'::jsonb)->>(substring(p_code,1,1))
+        "8": "08", "9": "09", "a": "0a", "b": "0b", "c": "0c", "d": "0d", "e": "0e", "f": "0f",
+        "g": "10", "q": "11", "h": "12", "m": "13", "r": "14", "v": "15", "j": "16", "k": "17",
+        "n": "18", "p": "19", "s": "1a", "t": "1b", "z": "1c", "y": "1d"}'::jsonb)->>(substring(p_code,1,1))
       )
     END || substring(p_code,2)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.decode_16h1c(text,text)
-  IS 'Decodes ghosts in BR and UY.'
+  IS 'Decode ghosts in BR and UY.'
 ;
--- SELECT osmc.decode_16h1c('fl','BR');
+-- SELECT osmc.decode_16h1c('fr','BR');
 
 -- -- :
 
