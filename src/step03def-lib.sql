@@ -474,7 +474,7 @@ CREATE or replace FUNCTION osmc.encode(
                   CASE
                   WHEN p_base IN (16,17,18)
                   THEN natcod.vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
-                  ELSE natcod.vbit_to_strstd( (id::bit(64)<<27)::bit(5)    ,'32nvu')
+                  ELSE natcod.vbit_to_strstd( (id::bit(64)<<27)::bit(5),'32nvu')
                   END
                 || (CASE WHEN length(xx.ghs) = length(prefix32) THEN '' ELSE substr(xx.ghs,length(prefix32),length(xx.ghs)) END) ) AS short_code
                 FROM osmc.coverage rr, LATERAL ( SELECT natcod.vbit_to_strstd( substring(natcod.baseh_to_vbit(prefix,16) from 4),'32nvu')) n(prefix32)
@@ -518,7 +518,7 @@ CREATE or replace FUNCTION osmc.encode(
         CASE
         WHEN p_base IN (16,17,18)
         THEN natcod.vbit_to_baseh(((id::bit(64)<<27)::bit(8))>>3,16)
-        ELSE natcod.vbit_to_strstd( (id::bit(64)<<27)::bit(5)    ,'32nvu')
+        ELSE natcod.vbit_to_strstd( (id::bit(64)<<27)::bit(5),'32nvu')
         END
       || (CASE WHEN length(c.code) = length(prefix32) THEN '' ELSE substr(c.code,length(prefix32)+1,length(c.code)) END) ) AS short_code
       FROM osmc.coverage r, LATERAL ( SELECT natcod.vbit_to_strstd( substring(natcod.baseh_to_vbit(prefix,16) from 4),'32nvu')) n(prefix32)
@@ -725,8 +725,6 @@ CREATE or replace FUNCTION osmc.encode_scientific_br(
     SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
     FROM osmc.coverage
     WHERE
-        --     (id::bit(64)<<24)::bit(2) = 0::bit(2) -- cobertura nacional apenas
-        -- AND (id::bit(64))::bit(10) = 76::bit(10)
         isolabel_ext = 'BR'
         AND ST_Contains(geom,p_geom)
   ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
@@ -761,8 +759,6 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
     SELECT bbox, (id::bit(64)<<27)::bit(4) AS l0code -- 1 dígito base16h
     FROM osmc.coverage
     WHERE
-        --     (id::bit(64)<<24)::bit(2) = 0::bit(2) -- cobertura nacional apenas
-        -- AND (id::bit(64))::bit(10) = 170::bit(10)
         isolabel_ext = 'CO'
         AND ST_Contains(geom,p_geom)
   ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
@@ -798,8 +794,6 @@ CREATE or replace FUNCTION osmc.encode_scientific_uy(
     SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
     FROM osmc.coverage
     WHERE
-        --     (id::bit(64)<<24)::bit(2) = 0::bit(2) -- cobertura nacional apenas
-        -- AND (id::bit(64))::bit(10) = 858::bit(10)
         isolabel_ext = 'UY'
         AND ST_Contains(geom,p_geom)
   ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
@@ -834,8 +828,6 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
     SELECT bbox, (id::bit(64)<<27)::bit(8) AS l0code -- 2 dígito  base16h
     FROM osmc.coverage
     WHERE
-        --     (id::bit(64)<<24)::bit(2) = 0::bit(2) -- cobertura nacional apenas
-        -- AND (id::bit(64))::bit(10) = 218::bit(10)
         isolabel_ext = 'EC'
         AND ST_Contains(geom,p_geom)
   ) u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
@@ -944,7 +936,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
               -- responsável pelo código curto na grade postal das subcélulas
               LEFT JOIN LATERAL
               (
-                SELECT isolabel_ext, (isolabel_ext || '~' || natcod.vbit_to_strstd( (id::bit(64)<<27)::bit(5)    ,'32nvu')
+                SELECT isolabel_ext, (isolabel_ext || '~' || natcod.vbit_to_strstd( (id::bit(64)<<27)::bit(5),'32nvu')
                 || (CASE WHEN length(xx.ghs) = length(prefix32) THEN '' ELSE substr(xx.ghs,length(prefix32),length(xx.ghs)) END) ) AS short_code
                 FROM osmc.coverage rr, LATERAL ( SELECT natcod.vbit_to_strstd( substring(natcod.baseh_to_vbit(prefix,16) from 4),'32nvu')) n(prefix32)
                 WHERE
@@ -1008,9 +1000,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
     ON TRUE
 
     WHERE
-    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN (
-    '0EG','10G','12G','00L','12L','0EJ','05H','11H'
-    ) ELSE TRUE  END
+    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal(geometry(POINT),int,int,int,int[],varbit,int,boolean,text)
   IS 'Encodes geometry to Postal OSMcode.'
@@ -1221,13 +1211,16 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
             (
               SELECT ggeohash.draw_cell_bybox(
                         ggeohash.decode_box2(
-                         substring(codebits from 9) -- 8 bits base16h
+                        CASE WHEN c.up_iso='CO' THEN substring(codebits from 5) ELSE substring(codebits from 9) END -- CO 4 bits base16h, others 8 bits base16h
                          ,bbox, CASE WHEN c.up_iso='EC' THEN TRUE ELSE FALSE END)
                     ,false,ST_SRID(geom)
                     ) AS geom
               FROM osmc.coverage
               WHERE isolabel_ext = c.up_iso -- cobertura nacional apenas
-                AND ( ( (id::bit(64)<<27)::bit(8) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h, prefixo conforme base
+                AND
+                CASE WHEN up_iso = 'CO' THEN ( ( (id::bit(64)<<27)::bit(4) # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+                ELSE ( ( (id::bit(64)<<27)::bit(8) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+                END
             ) v
 
             WHERE
@@ -1403,7 +1396,7 @@ CREATE or replace FUNCTION api.osmcode_decode_postal(
                   FROM osmc.coverage co
                   LEFT JOIN optim.jurisdiction ju
                   ON co.isolabel_ext = ju.isolabel_ext
-                  WHERE co.isolabel_ext = (osmc.str_geocodeiso_decode(p_iso))[1] -- possível usar os 14bits do id na busca
+                  WHERE co.isolabel_ext = (osmc.str_geocodeiso_decode(p_iso))[1]
                    AND ( (id::bit(64)<<27)::bit(5) # natcod.b32nvu_to_vbit(substring(upper(p_code),1,1)) ) = 0::bit(5)
               ) u
             ) c,
@@ -1418,7 +1411,7 @@ CREATE or replace FUNCTION api.osmcode_decode_postal(
             ) v
 
             WHERE
-            CASE WHEN country_iso = 'UY' THEN c.code NOT IN ('0EG','10G','12G','00L','12L','0EJ','05H','11H') ELSE TRUE END
+            CASE WHEN country_iso = 'UY' THEN c.code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE END
           )
       )
 $f$ LANGUAGE SQL IMMUTABLE;
