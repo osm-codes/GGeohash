@@ -552,9 +552,7 @@ CREATE or replace FUNCTION osmc.encode(
     ON TRUE
 
     WHERE
-    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN (
-    '0eg','10g','12g','00l','12l','0ej','05h','11h'
-    ) ELSE TRUE  END
+    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode(geometry(POINT),int,int,int,int,int[],varbit,int,boolean)
   IS 'Encodes geometry to OSMcode.'
@@ -695,9 +693,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
     ON TRUE
 
     WHERE
-    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN (
-    '0eg','10g','12g','00l','12l','0ej','05h','11h'
-    ) ELSE TRUE  END
+    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.osmcode_encode_scientific(geometry(POINT),int,int,int,int,int[],varbit,int,boolean)
   IS 'Encodes geometry to OSMcode.'
@@ -1235,7 +1231,7 @@ CREATE or replace FUNCTION api.osmcode_decode_scientific_absolute(
             ) v
 
             WHERE
-            CASE WHEN up_iso = 'UY' THEN c.code16h NOT IN ('0eg','10g','12g','00l','12l','0ej','05h','11h') ELSE TRUE END
+            CASE WHEN up_iso = 'UY' THEN c.code16h NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE END
           )
       )
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -1327,7 +1323,7 @@ CREATE or replace FUNCTION api.osmcode_decode_postal_absolute(
             ON TRUE
 
             WHERE
-            CASE WHEN upper_p_iso = 'UY' THEN natcod.vbit_to_baseh('000'||codebits,16) NOT IN ('0eg','10g','12g','00l','12l','0ej','05h','11h') ELSE TRUE END --verificar
+            CASE WHEN upper_p_iso = 'UY' THEN natcod.vbit_to_baseh('000'||codebits,16) NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE END --verificar
           )
       )
 $f$ LANGUAGE SQL IMMUTABLE;
