@@ -396,27 +396,11 @@ $f$ LANGUAGE SQL;
 COMMENT ON FUNCTION osmc.check_coverage(text,text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
--- SELECT osmc.check_coverage('BR-PA-Altamira','{021G,062H,063G,063H,068G,068H,069G,069H,06AG,06AH,06BG,06BH,0211FP,0211FS,0211FT,0211FV,0211FZ,02135N,02135Q,0211K,0211L,0211M,0213K,0214L}'::text[]);
+-- SELECT osmc.check_coverage('CO-BOY-Tunja','{C34P,C34Z,C35K,C35S,C35T}'::text[]);
 -- SELECT osmc.check_coverage('BR-SP-SaoPaulo','{0DF6J,0DF6L,0DF6M,0DFCJ,0DFCK,0DF69T,0DF6AV,0DF6BN,0DF6BS,0DF6BT,0DF6BZ,0DFC0R,0DFC1N,0DFC1P,0DFC1Q,0DFC1R,0DFC1S,0DFC1T,0DFC1V,0DFC1Z,0DFC2Q,0DFC3N,0DFC3Q,0DFC4N,0DFC4P,0DFC4R,0DFC4S,0DFC4V,0DF69P,0DF6AZ,0DFC0Q}'::text[]);
 
 ------------------
 -- generate coverage :
-
-CREATE OR REPLACE FUNCTION osmc.buffer_geom(geom geometry, buffer_type integer )
-RETURNS geometry AS $f$
-    SELECT
-        CASE
-        WHEN buffer_type=0 THEN geom                  -- no buffer
-        WHEN buffer_type=1 THEN ST_Buffer(geom,0.001) -- ~100m
-        WHEN buffer_type=2 THEN ST_Buffer(geom,0.05)  -- ~5000m
-        WHEN buffer_type=3 THEN ST_Buffer(geom,0.5)   -- ~50km
-        WHEN buffer_type=4 THEN ST_Buffer(geom,5)     -- ~500km
-        ELSE geom                                     -- no buffer
-        END
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.buffer_geom(geometry,integer)
-  IS 'Add standardized buffer to geometries.'
-;
 
 CREATE or replace FUNCTION osmc.generate_gridcodes(
   p_isolabel_ext text,
@@ -472,6 +456,7 @@ COMMENT ON FUNCTION osmc.generate_gridcodes(text,float,integer)
   IS 'Returns geohash table of grid centroids within the jurisdiction using the characteristic diameter.'
 ;
 -- SELECT * FROM osmc.generate_gridcodes('BR-SP-SaoPaulo');
+-- CREATE VIEW abcd AS SELECT * FROM osmc.generate_gridcodes('CO-BOY-Tunja');
 
 
 CREATE or replace FUNCTION osmc.generate_cover(
@@ -576,6 +561,7 @@ COMMENT ON FUNCTION osmc.generate_cover(text,float,integer)
   IS 'Simple generation of jurisdiction coverage possibilities. No overlay.'
 ;
 -- SELECT * FROM osmc.generate_cover('BR-SP-SaoPaulo');
+-- SELECT * FROM osmc.generate_cover('CO-BOY-Tunja');
 
 CREATE or replace FUNCTION osmc.select_cover(
   p_isolabel_ext text,
@@ -594,29 +580,33 @@ FROM
 LATERAL (
     SELECT
         ARRAY(
-            SELECT natcod.vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16)
-                -- CASE
-                -- WHEN iso     IN ('BR') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0),76)
-                -- WHEN iso     IN ('UY') THEN osmc.encode_16h1c(vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0),858)
-                -- WHEN iso NOT IN ('BR','UY') THEN vbit_to_baseh('000'||natcod.b32nvu_to_vbit(code),16,0)
-                -- ELSE NULL
-                -- END
+            SELECT
+                CASE
+                WHEN iso     IN ('BR') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),76),16),76)
+                WHEN iso     IN ('UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),858),16),858)
+                WHEN iso     IN ('CO') THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),170),16)
+                WHEN iso     IN ('EC') THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),218),16)
+                ELSE NULL
+                END
             FROM unnest(cover) t(code)
         ) AS cover_scientific,
         (('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(iso))::int AS srid,
         (('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(iso))::int AS jurisd_base_id
-) q
-WHERE
-(SELECT (osmc.check_coverage(p_isolabel_ext,array_remove(cover_scientific,'N'))).unioncontainsproperly) IS TRUE
+) q,
+--
+-- LATERAL (SELECT (osmc.check_coverage(p_isolabel_ext,array_remove(cover_scientific,'N')))) r
+LATERAL (SELECT * FROM osmc.check_coverage(p_isolabel_ext,cover_scientific)) r
+-- WHERE r.unioncontainsproperly IS TRUE
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
   IS 'Returns first coverage with less than 32 cells.'
 ;
 -- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');
+-- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('CO-BOY-Tunja');
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas',0.5,0);
 
-
+-- verificar funcao
 CREATE or replace FUNCTION osmc.cover_child_geometries(
    p_code         text, -- e.g.: '0977M,0977J,0977K,0975M,0975L' in 16h
    p_isolabel_ext text, -- e.g.: 'CO-BOY-Tunja'
