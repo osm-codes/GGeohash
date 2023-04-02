@@ -383,8 +383,8 @@ CREATE or replace FUNCTION osmc.vbit_from_16h_to_vbit_b32nvu(
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
-    WHEN p_iso IN (76,868,218) THEN substring(p_x from 4)              -- 8bits MSb viram 5
-    WHEN p_iso IN (170)        THEN substring((b'0' || p_x)>>1 from 2) -- 4bits MSb viram 5
+    WHEN p_iso IN (76,868,218) THEN substring(p_x from 4) -- 8bits MSb viram 5
+    WHEN p_iso IN (170)        THEN b'0' || p_x           -- 4bits MSb viram 5
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -399,9 +399,9 @@ CREATE or replace FUNCTION osmc.vbit_withoutL0(
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
-    WHEN p_iso IN ('BR','UY','EC') THEN substring(p_x from 9) -- Remove 8 bits MSb
-    WHEN p_iso IN ('CO')           THEN substring(p_x from 5) -- Remove 4 bits MSb
-    WHEN p_base = 32               THEN substring(p_x from 6) -- Remove 5 bits MSb
+    WHEN p_iso IN ('BR','UY','EC') AND p_base <> 32 THEN substring(p_x from 9) -- Remove 8 bits MSb
+    WHEN p_iso IN ('CO')           AND p_base <> 32 THEN substring(p_x from 5) -- Remove 4 bits MSb
+    WHEN p_base = 32                                THEN substring(p_x from 6) -- Remove 5 bits MSb
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -1282,7 +1282,7 @@ $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION api.osmcode_decode_postal(text)
   IS 'Decode Postal OSMcode. Wrap for osmcode_decode_postal.'
 ;
--- EXPLAIN ANALYZE SELECT api.osmcode_decode_postal('CO-Itagui~8HB');
+-- EXPLAIN ANALYZE SELECT api.osmcode_decode_postal('CO-BOY-Tunja~44QZNW');
 
 
 ------------------
