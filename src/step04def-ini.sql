@@ -1,5 +1,3 @@
-------------------
--- Table coverage:
 
 CREATE or replace FUNCTION osmc.L0cover_upsert_br() RETURNS text AS $f$
   -- L0cover BRASIL
@@ -218,11 +216,16 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
     -- bbox prefix
     LEFT JOIN LATERAL
     (
-      SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(substring(p.prefix_bits from 9),bbox) ELSE bbox END) AS bbox
+      SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(p.prefix_bits,(split_part(p.isolabel_ext,'-',1)),16),bbox) ELSE bbox END) AS bbox
       FROM osmc.coverage
       WHERE   (  (id::bit(64)    )::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10) )
           AND (  (id::bit(64)<<24)::bit(2) ) = 0::bit(2)
-          AND ( ((id::bit(64)<<27)::bit(8) # prefix_bits::bit(8) ) = 0::bit(8)  )-- L0 2 dígitos base16h
+          AND (
+                CASE
+                WHEN (split_part(p.isolabel_ext,'-',1)) = 'CO' THEN ( ( osmc.extract_L0bits(id,'CO')   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+                ELSE                    ( ( osmc.extract_L0bits(id,(split_part(p.isolabel_ext,'-',1))) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+                END
+          )
     ) s
     ON TRUE
 
@@ -235,7 +238,9 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
 -- SELECT osmc.update_coverage_isolevel3('BR-PA-Altamira',0::smallint,'{021G,062H,063G,063H,068G,068H,069G,069H,06AG,06AH,06BG,06BH}'::text[],'{0211FP,0211FS,0211FT,0211FV,0211FZ,02135N,02135Q,0211K,0211L,0211M,0213K,0214L}'::text[]);
--- SELECT osmc.update_coverage_isolevel3('CO-RIS-Pereira',0::smallint,'{0FAH,085G,090G,0EFH}'::text[],'{08551Z,08553P,08553Q,08553R,08553V,08554T,08554Z,08555T,08555Z,08556N,08556P,08556Q,08556R,08556S,08556T,08556V,08556Z,08557N,08557P,08557Q,08557R,08557S,08557T,08557V,09002N,09002P}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c34p,c34z,c35k,c35s,c35t}'::text[],'{}'::text[]);
+
+
 
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
   p_isolabel_ext text,
@@ -369,11 +374,17 @@ FROM
     -- bbox prefix
     LATERAL
     (
-      SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(substring(p.prefix_bits from 9),bbox) ELSE bbox END) AS bbox
+      SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(p.prefix_bits,(split_part(p.isolabel_ext,'-',1)),16),bbox) ELSE bbox END) AS bbox
       FROM osmc.coverage
       WHERE   (  (id::bit(64)    )::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10) )
           AND (  (id::bit(64)<<24)::bit(2) ) = 0::bit(2)
-          AND ( ((id::bit(64)<<27)::bit(8) # prefix_bits::bit(8) ) = 0::bit(8)  )-- L0 2 dígitos base16h
+          AND (
+                CASE
+                WHEN (split_part(p.isolabel_ext,'-',1)) = 'CO' THEN ( ( osmc.extract_L0bits(id,'CO')   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+                ELSE                    ( ( osmc.extract_L0bits(id,(split_part(p.isolabel_ext,'-',1))) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+                END
+          )
+
     ) s
     ORDER BY p.isolabel_ext, order_prefix
   ) x,
@@ -396,7 +407,7 @@ $f$ LANGUAGE SQL;
 COMMENT ON FUNCTION osmc.check_coverage(text,text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
--- SELECT osmc.check_coverage('CO-BOY-Tunja','{C34P,C34Z,C35K,C35S,C35T}'::text[]);
+-- SELECT osmc.check_coverage('CO-BOY-Tunja','{c34p,c34z,c35k,c35s,c35t}'::text[]);
 -- SELECT osmc.check_coverage('BR-SP-SaoPaulo','{0DF6J,0DF6L,0DF6M,0DFCJ,0DFCK,0DF69T,0DF6AV,0DF6BN,0DF6BS,0DF6BT,0DF6BZ,0DFC0R,0DFC1N,0DFC1P,0DFC1Q,0DFC1R,0DFC1S,0DFC1T,0DFC1V,0DFC1Z,0DFC2Q,0DFC3N,0DFC3Q,0DFC4N,0DFC4P,0DFC4R,0DFC4S,0DFC4V,0DF69P,0DF6AZ,0DFC0Q}'::text[]);
 
 ------------------
@@ -606,7 +617,6 @@ COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
 -- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('CO-BOY-Tunja');
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas',0.5,0);
 
--- verificar funcao
 CREATE or replace FUNCTION osmc.cover_child_geometries(
    p_code         text, -- e.g.: '0977M,0977J,0977K,0975M,0975L' in 16h
    p_isolabel_ext text, -- e.g.: 'CO-BOY-Tunja'
@@ -644,15 +654,15 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
     ) c,
     LATERAL
     (
-        SELECT bbox, ST_SRID(geom) AS srid,
-        CASE
-        WHEN p_base IN (16,17,18) THEN (id::bit(64)<<27)::bit(8) -- 2 dígito  base16h
-        ELSE                           (id::bit(64)<<30)::bit(5) -- 1 dígito  base32
-        END AS l0code
+        SELECT bbox, ST_SRID(geom) AS srid, osmc.extract_L0bits(id,isolabel_ext,p_base) AS l0code
 
         FROM osmc.coverage
         WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1) -- cobertura nacional apenas
-        AND ( ( (id::bit(64)<<27)::bit(8) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h, prefixo conforme base
+        AND
+          CASE
+          WHEN isolabel_ext = 'CO' THEN ( ( osmc.extract_L0bits(id,'CO')   # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+          ELSE                    ( ( osmc.extract_L0bits(id,isolabel_ext) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+          END
     ) v,
     LATERAL
     (
@@ -666,7 +676,7 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
             )
         ) AS geom
 
-        FROM osmc.ggeohash_GeomsFromVarbit(substring(codebits from 9),(codebits<<3)::bit(5),false,srid,32,32,bbox,false)
+        FROM osmc.ggeohash_GeomsFromVarbit(osmc.vbit_withoutL0(codebits,(split_part(p_isolabel_ext,'-',1)),16),(codebits<<3)::bit(5),false,srid,32,32,bbox,false)
 
         WHERE
             ST_Intersects(
