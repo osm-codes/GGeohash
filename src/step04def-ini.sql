@@ -374,12 +374,12 @@ FROM
     (
       SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(p.prefix_bits,(split_part(p.isolabel_ext,'-',1)),16),bbox) ELSE bbox END) AS bbox
       FROM osmc.coverage
-      WHERE   (  (id::bit(64)    )::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10) )
-          AND (  (id::bit(64)<<24)::bit(2) ) = 0::bit(2)
+      WHERE   (cbits)::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10)
+          AND is_country IS FALSE
           AND (
                 CASE
-                WHEN (split_part(p.isolabel_ext,'-',1)) = 'CO' THEN ( ( osmc.extract_L0bits(id,'CO')   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
-                ELSE                    ( ( osmc.extract_L0bits(id,(split_part(p.isolabel_ext,'-',1))) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+                WHEN (split_part(p.isolabel_ext,'-',1)) = 'CO' THEN ( ( osmc.extract_L0bits(cbits,'CO')   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+                ELSE                    ( ( osmc.extract_L0bits(cbits,(split_part(p.isolabel_ext,'-',1))) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
                 END
           )
 
@@ -585,7 +585,7 @@ FROM
     WHERE number_cells < 32 -- MAX 31 cells
     ORDER BY number_cells DESC
 ) p,
--- generate array in scientific base. 16h
+-- generate array in scientific base16h
 LATERAL (
     SELECT
         ARRAY(
@@ -652,14 +652,14 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
     ) c,
     LATERAL
     (
-        SELECT bbox, ST_SRID(geom) AS srid, osmc.extract_L0bits(id,isolabel_ext,p_base) AS l0code
+        SELECT bbox, ST_SRID(geom) AS srid, osmc.extract_L0bits(cbits,isolabel_ext) AS l0code
 
         FROM osmc.coverage
         WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1) -- cobertura nacional apenas
         AND
           CASE
-          WHEN isolabel_ext = 'CO' THEN ( ( osmc.extract_L0bits(id,'CO')   # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
-          ELSE                    ( ( osmc.extract_L0bits(id,isolabel_ext) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+          WHEN isolabel_ext = 'CO' THEN ( ( osmc.extract_L0bits(cbits,'CO')   # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+          ELSE                    ( ( osmc.extract_L0bits(cbits,isolabel_ext) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
           END
     ) v,
     LATERAL
