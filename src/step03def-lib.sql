@@ -594,7 +594,8 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
 ) RETURNS jsonb AS $f$
     SELECT osmc.osmcode_encode_scientific(p_geom,16,
       CASE
-      WHEN p_uncertainty > -1 AND x > 2 THEN x-2
+      WHEN p_uncertainty > -1 AND x >  2 THEN x-2
+      WHEN p_uncertainty > -1 AND x <= 2 THEN 0
       ELSE 40
       END,
       9377,
@@ -620,7 +621,8 @@ CREATE or replace FUNCTION osmc.encode_scientific_uy(
 ) RETURNS jsonb AS $f$
     SELECT osmc.osmcode_encode_scientific(p_geom,18,
       CASE
-      WHEN p_uncertainty > -1 AND x > 6 THEN x-6
+      WHEN p_uncertainty > -1 AND x >  6 THEN x-6
+      WHEN p_uncertainty > -1 AND x <= 6 THEN 0
       ELSE 40
       END,
       32721,
@@ -646,7 +648,8 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
 ) RETURNS jsonb AS $f$
     SELECT osmc.osmcode_encode_scientific(p_geom,16,
       CASE
-      WHEN p_uncertainty > -1 AND x > 5  THEN x-5
+      WHEN p_uncertainty > -1 AND x >  5 THEN x-5
+      WHEN p_uncertainty > -1 AND x <= 5 THEN 0
       ELSE 40
       END,
       32717,
