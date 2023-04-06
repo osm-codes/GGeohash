@@ -595,7 +595,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
     SELECT osmc.osmcode_encode_scientific(p_geom,16,
       CASE
       WHEN p_uncertainty > -1 AND x > 2 THEN x-2
-      ELSE 0
+      ELSE 40
       END,
       9377,
       CASE
@@ -621,7 +621,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_uy(
     SELECT osmc.osmcode_encode_scientific(p_geom,18,
       CASE
       WHEN p_uncertainty > -1 AND x > 6 THEN x-6
-      ELSE 0
+      ELSE 40
       END,
       32721,
       CASE
@@ -647,7 +647,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
     SELECT osmc.osmcode_encode_scientific(p_geom,16,
       CASE
       WHEN p_uncertainty > -1 AND x > 5  THEN x-5
-      ELSE 0
+      ELSE 40
       END,
       32717,
       CASE
