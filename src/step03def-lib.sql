@@ -564,14 +564,12 @@ COMMENT ON FUNCTION osmc.osmcode_encode_scientific(geometry(POINT),int,int,int,i
 CREATE or replace FUNCTION osmc.encode_scientific_br(
   p_geom        geometry(POINT),
   p_uncertainty float  DEFAULT -1,
-  p_base        int    DEFAULT 16,
   p_grid_size   int    DEFAULT 0
 ) RETURNS jsonb AS $f$
-    SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
+    SELECT osmc.osmcode_encode_scientific(p_geom,18,
       CASE
-      WHEN p_uncertainty > -1 AND p_base     IN (16,18) THEN x
-      WHEN p_uncertainty > -1 AND p_base NOT IN (16,18) THEN 0
-      ELSE 35
+      WHEN p_uncertainty > -1 THEN x
+      ELSE 40
       END,
       952019,
       CASE
@@ -585,21 +583,19 @@ CREATE or replace FUNCTION osmc.encode_scientific_br(
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
     WHERE is_country IS TRUE AND cbits::bit(10) = 76::bit(10) AND ST_Contains(geom,p_geom)
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_scientific_br(geometry(POINT),float,int,int)
+COMMENT ON FUNCTION osmc.encode_scientific_br(geometry(POINT),float,int)
   IS 'Encodes geometry to BR Scientific OSMcode.'
 ;
 
 CREATE or replace FUNCTION osmc.encode_scientific_co(
   p_geom        geometry(POINT),
   p_uncertainty float  DEFAULT -1,
-  p_base        int    DEFAULT 16,
   p_grid_size   int    DEFAULT 0
 ) RETURNS jsonb AS $f$
-    SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
+    SELECT osmc.osmcode_encode_scientific(p_geom,16,
       CASE
-      WHEN p_uncertainty > -1 AND      p_base IN (16) AND x > 2  THEN x-2
-      WHEN p_uncertainty > -1 AND NOT (p_base IN (16) AND x > 2) THEN 0
-      ELSE 35
+      WHEN p_uncertainty > -1 AND x > 2 THEN x-2
+      ELSE 0
       END,
       9377,
       CASE
@@ -613,22 +609,19 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
     WHERE is_country IS TRUE AND cbits::bit(10) = 170::bit(10) AND ST_Contains(geom,p_geom)
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_scientific_co(geometry(POINT),float,int,int)
+COMMENT ON FUNCTION osmc.encode_scientific_co(geometry(POINT),float,int)
   IS 'Encodes geometry to CO Scientific OSMcode.'
 ;
 
 CREATE or replace FUNCTION osmc.encode_scientific_uy(
   p_geom        geometry(POINT),
   p_uncertainty float  DEFAULT -1,
-  p_base        int    DEFAULT 16,
   p_grid_size   int    DEFAULT 0
 ) RETURNS jsonb AS $f$
-    SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
+    SELECT osmc.osmcode_encode_scientific(p_geom,18,
       CASE
-      WHEN p_uncertainty > -1 AND p_base IN (17)    AND x > 6 THEN ((x-6)/4)*4
-      WHEN p_uncertainty > -1 AND p_base IN (16,18) AND x > 6 THEN   x-6
-      WHEN p_uncertainty > -1 AND NOT (p_base IN (16,17,18) AND x > 6) THEN   x-6
-      ELSE 35
+      WHEN p_uncertainty > -1 AND x > 6 THEN x-6
+      ELSE 0
       END,
       32721,
       CASE
@@ -642,21 +635,19 @@ CREATE or replace FUNCTION osmc.encode_scientific_uy(
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
     WHERE is_country IS TRUE AND cbits::bit(10) = 858::bit(10) AND ST_Contains(geom,p_geom)
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_scientific_uy(geometry(POINT),float,int,int)
+COMMENT ON FUNCTION osmc.encode_scientific_uy(geometry(POINT),float,int)
   IS 'Encodes geometry to UY Scientific OSMcode.'
 ;
 
 CREATE or replace FUNCTION osmc.encode_scientific_ec(
   p_geom        geometry(POINT),
   p_uncertainty float  DEFAULT -1,
-  p_base        int    DEFAULT 16,
   p_grid_size   int    DEFAULT 0
 ) RETURNS jsonb AS $f$
-    SELECT osmc.osmcode_encode_scientific(p_geom,p_base,
+    SELECT osmc.osmcode_encode_scientific(p_geom,16,
       CASE
-      WHEN p_uncertainty > -1 AND      p_base IN (16) AND x > 5  THEN x-5
-      WHEN p_uncertainty > -1 AND NOT (p_base IN (16) AND x > 5) THEN x-5
-      ELSE 35
+      WHEN p_uncertainty > -1 AND x > 5  THEN x-5
+      ELSE 0
       END,
       32717,
       CASE
@@ -670,7 +661,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty)) t(x)
     WHERE is_country IS TRUE AND cbits::bit(10) = 218::bit(10) AND ST_Contains(geom,p_geom)
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_scientific_ec(geometry(POINT),float,int,int)
+COMMENT ON FUNCTION osmc.encode_scientific_ec(geometry(POINT),float,int)
   IS 'Encodes geometry to EC Scientific OSMcode.'
 ;
 
@@ -834,7 +825,7 @@ CREATE or replace FUNCTION osmc.encode_postal_ec(
     SELECT osmc.encode_postal(p_geom,
       CASE
       WHEN p_uncertainty > -1 AND x > 5  THEN ((x-5)/5)*5
-      WHEN p_uncertainty > -1 AND x <= 5 THEN ((x-5)/5)*5
+      WHEN p_uncertainty > -1 AND x <= 5 THEN 0
       ELSE 35
       END,
       32717,
@@ -875,46 +866,47 @@ COMMENT ON FUNCTION api.osmcode_encode_postal(text,int,text)
 
 CREATE or replace FUNCTION api.osmcode_encode_scientific(
   uri    text,
-  p_base int DEFAULT 16,
   grid   int DEFAULT 0,
   p_isolabel_ext text DEFAULT NULL
 ) RETURNS jsonb AS $wrap$
   SELECT
     CASE split_part(p_isolabel_ext,'-',1)
-    WHEN 'BR' THEN osmc.encode_scientific_br(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),952019),u[4],p_base,grid)
-    WHEN 'CO' THEN osmc.encode_scientific_co(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),  9377),u[4],p_base,grid)
-    WHEN 'UY' THEN osmc.encode_scientific_uy(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32721),u[4],p_base,grid)
-    WHEN 'EC' THEN osmc.encode_scientific_ec(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32717),u[4],p_base,grid)
+    WHEN 'BR' THEN osmc.encode_scientific_br(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),952019),u[4],grid)
+    WHEN 'CO' THEN osmc.encode_scientific_co(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326),  9377),u[4],grid)
+    WHEN 'UY' THEN osmc.encode_scientific_uy(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32721),u[4],grid)
+    WHEN 'EC' THEN osmc.encode_scientific_ec(ST_Transform(ST_SetSRID(ST_MakePoint(u[2],u[1]),4326), 32717),u[4],grid)
     END
   FROM ( SELECT str_geouri_decode(uri) ) t(u)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION api.osmcode_encode_scientific(text,int,int,text)
+COMMENT ON FUNCTION api.osmcode_encode_scientific(text,int,text)
   IS 'Encodes Geo URI to OSMcode. Wrap for osmcode_encode_context(geometry)'
 ;
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode_scientific('geo:-15.5,-47.8;u=600000',18,'0','BR');
 
 CREATE or replace FUNCTION api.osmcode_encode(
   uri    text,
-  p_base int DEFAULT 32,
   grid   int DEFAULT 0
 ) RETURNS jsonb AS $wrap$
   SELECT
-    CASE
-      WHEN p_base = 32 THEN api.osmcode_encode_postal(uri,grid,isolabel_ext)
-      ELSE                  api.osmcode_encode_scientific(uri,p_base,grid,isolabel_ext)
-    END
-  FROM
   (
-    SELECT
-      (
-      SELECT isolabel_ext
-      FROM osmc.coverage
-      WHERE is_country is TRUE AND ST_Contains(geom_srid4326,ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326))
-      ) AS isolabel_ext
-    FROM ( SELECT str_geouri_decode(uri) ) t(latLon)
-  ) x
+    SELECT api.osmcode_encode_scientific(uri,grid,isolabel_ext)
+    FROM
+    (
+      SELECT isolabel_ext, geom
+      FROM optim.jurisdiction_geom
+      WHERE isolabel_ext IN ('BR','CO','UY','EC')
+
+      UNION
+
+      SELECT isolabel_ext, geom
+      FROM optim.jurisdiction_eez
+      WHERE isolabel_ext IN ('BR','CO','UY','EC')
+    ) x
+    WHERE ST_Contains(geom,ST_SetSRID(ST_MakePoint(latLon[2],latLon[1]),4326))
+  )
+  FROM ( SELECT str_geouri_decode(uri) ) t(latLon)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION api.osmcode_encode(text,int,int)
+COMMENT ON FUNCTION api.osmcode_encode(text,int)
   IS 'Encodes Geo URI to OSMcode.'
 ;
 -- EXPLAIN ANALYZE SELECT api.osmcode_encode('geo:3.461,-76.577');
