@@ -722,7 +722,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
                   'short_code', short_code,
                   'area', ST_Area(geom_cell),
                   'side', SQRT(ST_Area(geom_cell)),
-                  'base', base,
+                  'base', '32nvu',
                   'jurisd_local_id', jurisd_local_id,
                   'jurisd_base_id', p_jurisd_base_id,
                   'scientic_code', CASE
@@ -737,7 +737,6 @@ CREATE or replace FUNCTION osmc.encode_postal(
     (
       SELECT bit_string,
       ggeohash.draw_cell_bybox(ggeohash.decode_box2(bit_string,p_bbox,p_lonlat),false,p_srid) AS geom_cell,
-      '32nvu' AS base,
       upper(natcod.vbit_to_strstd( osmc.vbit_from_16h_to_vbit_b32nvu((p_l0code||bit_string),p_jurisd_base_id),'32nvu')) AS code,
       p_l0code||bit_string AS codebits
       FROM ggeohash.encode3(ST_X(p_geom),ST_Y(p_geom),p_bbox,p_bit_length,p_lonlat) r(bit_string)
