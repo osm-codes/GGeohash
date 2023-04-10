@@ -710,7 +710,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
     SELECT jsonb_build_object(
       'type', 'FeatureCollection',
       'features',
-          (ST_AsGeoJSONb(ST_Transform_resilient(geom_cell,4326,0.005),8,0,null,
+          jsonb_agg(ST_AsGeoJSONb(ST_Transform_resilient(geom_cell,4326,0.005),8,0,null,
               jsonb_strip_nulls(jsonb_build_object(
                   'code', code,
                   'short_code', short_code,
