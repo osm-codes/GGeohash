@@ -22,3 +22,5 @@ all:
 	psql $(pg_uri_root)/$(pg_datalake) < $(gits_basepath)/_osmc/GGeohash/src/step02def-libGGeohash.sql
 	psql $(pg_uri_root)/$(pg_datalake) < $(gits_basepath)/_osmc/GGeohash/src/step03def-lib.sql
 	psql $(pg_uri_root)/$(pg_datalake) < $(gits_basepath)/_osmc/GGeohash/src/step04def-ini.sql
+	@echo "--- Running API GGeohash ---"
+	psql $(pg_uri_root)/$(pg_datalake) < $(gits_basepath)/_osmc/WS/src/step01ggeohash-api.sql
