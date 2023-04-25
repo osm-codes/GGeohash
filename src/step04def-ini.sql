@@ -176,7 +176,7 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
 ) RETURNS text AS $f$
   DELETE FROM osmc.coverage WHERE isolabel_ext = p_isolabel_ext;
   INSERT INTO osmc.coverage(cbits,isolabel_ext,cindex,bbox,status,is_country,is_contained,is_overlay,kx_prefix,geom)
-  SELECT jurisd_base_id::bit(10) || prefix_bits,isolabel_ext,cindex,bbox,2::smallint,FALSE,is_contained,is_overlay,kx_prefix,geom
+  SELECT jurisd_base_id::bit(10) || prefix_bits,isolabel_ext,cindex,bbox,p_status,FALSE,is_contained,is_overlay,kx_prefix,geom
   FROM
   (
     SELECT prefix_bits,
@@ -238,8 +238,6 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
 -- SELECT osmc.update_coverage_isolevel3('BR-PA-Altamira',0::smallint,'{021G,062H,063G,063H,068G,068H,069G,069H,06AG,06AH,06BG,06BH}'::text[],'{0211FP,0211FS,0211FT,0211FV,0211FZ,02135N,02135Q,0211K,0211L,0211M,0213K,0214L}'::text[]);
 -- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c34p,c34z,c35k,c35s,c35t}'::text[],'{}'::text[]);
 
-
-
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
   p_isolabel_ext text,
   p_status       smallint, -- 0: generated, 1: revised, 2: homologated
@@ -282,16 +280,16 @@ BEGIN
         SELECT isolabel_ext, status,
 
           CASE
-          WHEN '%s' IN ('BR') THEN osmc.encode_16h1c(prefix,76)
-          WHEN '%s' IN ('UY') THEN osmc.encode_16h1c(prefix,858)
-          ELSE prefix
+          WHEN '%s' IN ('BR') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),76)
+          WHEN '%s' IN ('UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),858)
+          ELSE natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
           END AS prefix
 
         FROM osmc.coverage
-        WHERE ( (id::bit(64))::bit(10) ) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- country cover
-              AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- isolevel3 cover
+        WHERE (cbits::bit(10)) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- country cover
+              AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS FALSE
-        ORDER BY isolabel_ext, length(prefix), prefix
+        ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
       ) r
       GROUP BY isolabel_ext
       ORDER BY 1
@@ -304,16 +302,16 @@ BEGIN
         SELECT isolabel_ext, status,
 
           CASE
-          WHEN '%s' IN ('BR') THEN osmc.encode_16h1c(prefix,76)
-          WHEN '%s' IN ('UY') THEN osmc.encode_16h1c(prefix,858)
-          ELSE prefix
+          WHEN '%s' IN ('BR') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),76)
+          WHEN '%s' IN ('UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),858)
+          ELSE natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
           END AS prefix
 
         FROM osmc.coverage
-        WHERE ( (id::bit(64))::bit(10) ) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- 76, country cover
-              AND ( (id::bit(64)<<24)::bit(2) ) <> 0::bit(2) -- isolevel3 cover
+        WHERE (cbits::bit(10)) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- 76, country cover
+              AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS TRUE
-        ORDER BY isolabel_ext, length(prefix), prefix
+        ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
       ) r
       GROUP BY isolabel_ext
       ORDER BY 1
@@ -375,7 +373,7 @@ FROM
       SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(p.prefix_bits,(split_part(p.isolabel_ext,'-',1)),16),bbox) ELSE bbox END) AS bbox
       FROM osmc.coverage
       WHERE   (cbits)::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10)
-          AND is_country IS FALSE
+          AND is_country IS TRUE
           AND (
                 CASE
                 WHEN (split_part(p.isolabel_ext,'-',1)) = 'CO' THEN ( ( osmc.extract_L0bits(cbits,'CO')   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
@@ -406,7 +404,6 @@ COMMENT ON FUNCTION osmc.check_coverage(text,text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
 -- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347k,c347n,c347p,c347s,c347t,c347y,c347z,c34dn,c34dp,c34dy,c34dz,c352k,c352s,c352t,c352y,c352z,c358j,c358k,c358n,c358p,c358s,c358t,c358y,c358z,c359k,c359s,c359t,c35an,c35bj}'::text[]);
--- SELECT osmc.check_coverage('BR-SP-SaoPaulo','{0DF6J,0DF6L,0DF6M,0DFCJ,0DFCK,0DF69T,0DF6AV,0DF6BN,0DF6BS,0DF6BT,0DF6BZ,0DFC0R,0DFC1N,0DFC1P,0DFC1Q,0DFC1R,0DFC1S,0DFC1T,0DFC1V,0DFC1Z,0DFC2Q,0DFC3N,0DFC3Q,0DFC4N,0DFC4P,0DFC4R,0DFC4S,0DFC4V,0DF69P,0DF6AZ,0DFC0Q}'::text[]);
 
 ------------------
 -- generate coverage :
@@ -465,8 +462,6 @@ COMMENT ON FUNCTION osmc.generate_gridcodes(text,float,integer)
   IS 'Returns geohash table of grid centroids within the jurisdiction using the characteristic diameter.'
 ;
 -- SELECT * FROM osmc.generate_gridcodes('BR-SP-SaoPaulo');
--- CREATE VIEW abcd AS SELECT * FROM osmc.generate_gridcodes('CO-BOY-Tunja');
-
 
 CREATE or replace FUNCTION osmc.generate_cover(
   p_isolabel_ext text,
@@ -570,7 +565,6 @@ COMMENT ON FUNCTION osmc.generate_cover(text,float,integer)
   IS 'Simple generation of jurisdiction coverage possibilities. No overlay.'
 ;
 -- SELECT * FROM osmc.generate_cover('BR-SP-SaoPaulo');
--- SELECT * FROM osmc.generate_cover('CO-BOY-Tunja');
 
 CREATE or replace FUNCTION osmc.select_cover(
   p_isolabel_ext text,
@@ -590,13 +584,14 @@ LATERAL (
     SELECT
         ARRAY(
             SELECT
-                CASE
-                WHEN iso     IN ('BR') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),76),16),76)
-                WHEN iso     IN ('UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),858),16),858)
-                WHEN iso     IN ('CO') THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),170),16)
-                WHEN iso     IN ('EC') THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),218),16)
-                ELSE NULL
-                END
+                -- CASE
+                -- WHEN iso     IN ('BR') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),76),16),76)
+                -- WHEN iso     IN ('UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),858),16),858)
+                -- WHEN iso     IN ('CO') THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),170),16)
+                -- WHEN iso     IN ('EC') THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),218),16)
+                -- ELSE NULL
+                -- END
+                natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(iso))::int),16)
             FROM unnest(cover) t(code)
         ) AS cover_scientific,
         (('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(iso))::int AS srid,
@@ -612,7 +607,6 @@ COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
   IS 'Returns first coverage with less than 32 cells.'
 ;
 -- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');
--- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('CO-BOY-Tunja');
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas',0.5,0);
 
 CREATE or replace FUNCTION osmc.cover_child_geometries(
@@ -777,7 +771,7 @@ CREATE TABLE osmc.tmp_check_coverage (
 -- Tabela para armazenar os isolabel_ext que terão cobertura gerada
 DROP TABLE osmc.tmp_gerar;
 CREATE TABLE osmc.tmp_gerar AS
-SELECT isolabel_ext FROM optim.jurisdiction WHERE isolabel_ext LIKE 'BR-%-%' AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage)
+SELECT isolabel_ext, true AS generate FROM optim.jurisdiction WHERE isolabel_ext LIKE 'BR-%-%' AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage)
 ;
 
 -- COBERTURAS para isolabel_ext em osmc.tmp_gerar
@@ -789,7 +783,7 @@ AS $$
 DECLARE
     r RECORD;
 BEGIN
-    FOR r IN EXECUTE format('SELECT isolabel_ext FROM osmc.tmp_gerar ;','')
+    FOR r IN EXECUTE format('SELECT isolabel_ext FROM osmc.tmp_gerar WHERE generate IS TRUE;','')
     LOOP
         RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
         INSERT INTO osmc.tmp_coverage_city SELECT * FROM osmc.select_cover((r.isolabel_ext)::text,p_fraction);
@@ -802,10 +796,6 @@ BEGIN
         COMMIT;
         RAISE NOTICE 'Cobertura inserida';
     END LOOP;
-
-    -- deletar coberturas já existentes
-    -- DELETE FROM osmc.tmp_check_coverage
-    -- WHERE isolabel_ext IN (SELECT isolabel_ext FROM osmc.coverage);
 END;
 $$;
 
@@ -829,7 +819,7 @@ $$;
 
 
 -- tmux
-psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop();" &> log
+psql postgres://postgres@localhost/dl06t_main -c "CALL osmc.cover_loop();" &> log
 
 -- COVER TYPE 1
 -- Return coverage OK
