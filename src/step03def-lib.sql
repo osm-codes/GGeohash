@@ -686,6 +686,7 @@ CREATE or replace FUNCTION osmc.encode_short_code(
         AND CASE WHEN is_contained IS FALSE THEN ST_Contains(geom,p_geom) ELSE TRUE END
         AND cbits # substring(p_codebits FROM 1 FOR length(cbits)) = substring(0::bit(35) FROM 1 FOR length(cbits))
         ORDER BY length(kx_prefix) DESC
+        LIMIT 1
     ) t
     LEFT JOIN optim.jurisdiction s
     ON s.isolabel_ext = t.isolabel_ext
