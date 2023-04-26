@@ -1,17 +1,11 @@
 
 CREATE or replace FUNCTION osmc.L0cover_upsert_br() RETURNS text AS $f$
-  -- L0cover BRASIL
-  -- DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 76::bit(10);
   DELETE FROM osmc.coverage  WHERE isolabel_ext='BR';
   INSERT INTO osmc.coverage(cbits,isolabel_ext,bbox,status,is_country,is_contained,is_overlay,geom,geom_srid4326)
   SELECT jurisd_base_id::bit(10) || (natcod.baseh_to_vbit(prefix,16)),
          'BR',bbox,1::SMALLINT,TRUE,
          (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN TRUE ELSE FALSE END),
          FALSE,geom,ST_Transform(geom,4326)
-  -- SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
-  --         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-  --         rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-  --         'BR',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
   FROM
   (
       SELECT 76 AS jurisd_base_id, prefix, bbox,geom_country,
@@ -35,18 +29,12 @@ COMMENT ON FUNCTION osmc.L0cover_upsert_br()
 ;
 
 CREATE or replace FUNCTION osmc.L0cover_upsert_co() RETURNS text AS $f$
-  -- L0cover COLOMBIA
-  -- DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 170::bit(10);
   DELETE FROM osmc.coverage  WHERE isolabel_ext='CO';
   INSERT INTO osmc.coverage(cbits,isolabel_ext,bbox,status,is_country,is_contained,is_overlay,geom,geom_srid4326)
   SELECT jurisd_base_id::bit(10) || (natcod.baseh_to_vbit(prefix,16)),
          'CO',bbox,1::SMALLINT,TRUE,
          (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN TRUE ELSE FALSE END),
          FALSE,geom,ST_Transform(geom,4326)
-  -- SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
-  --         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-  --         rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-  --         'CO',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
   FROM
   (
     SELECT 170 AS jurisd_base_id,prefix,bbox,geom_country,
@@ -81,18 +69,12 @@ COMMENT ON FUNCTION osmc.L0cover_upsert_co()
 ;
 
 CREATE or replace FUNCTION osmc.L0cover_upsert_ec() RETURNS text AS $f$
-  -- L0cover ECUADOR
-  -- DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 218::bit(10);
   DELETE FROM osmc.coverage  WHERE isolabel_ext='EC';
   INSERT INTO osmc.coverage(cbits,isolabel_ext,bbox,status,is_country,is_contained,is_overlay,geom,geom_srid4326)
   SELECT jurisd_base_id::bit(10) || (natcod.baseh_to_vbit(prefix,16)),
          'EC',bbox,1::SMALLINT,TRUE,
          (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN TRUE ELSE FALSE END),
          FALSE,geom,ST_Transform(geom,4326)
-  -- SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
-  --         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-  --         rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-  --         'EC',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
   FROM
   (
     (
@@ -117,18 +99,12 @@ COMMENT ON FUNCTION osmc.L0cover_upsert_ec()
 ;
 
 CREATE or replace FUNCTION osmc.L0cover_upsert_uy() RETURNS text AS $f$
-  -- L0cover URUGUAI
-  -- DELETE FROM osmc.coverage  WHERE (id::bit(64)<<24)::bit(2) = 0::bit(2) AND (id::bit(64))::bit(10) = 858::bit(10);
   DELETE FROM osmc.coverage  WHERE isolabel_ext='UY';
   INSERT INTO osmc.coverage(cbits,isolabel_ext,bbox,status,is_country,is_contained,is_overlay,geom,geom_srid4326)
   SELECT jurisd_base_id::bit(10) || (natcod.baseh_to_vbit(prefix,16)),
          'UY',bbox,1::SMALLINT,TRUE,
          (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN TRUE ELSE FALSE END),
          FALSE,geom,ST_Transform(geom,4326)
-  -- SELECT (jurisd_base_id::bit(10) || 0::bit(14) || '00' ||
-  --         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN '1' ELSE '0' END) ||
-  --         rpad((natcod.baseh_to_vbit(prefix,16))::text, 34, '0000000000000000000000000000000000'))::bit(64)::bigint,
-  --         'UY',bbox,1::SMALLINT,false,geom,ST_Transform(geom,4326)
   FROM
   (
     SELECT 858 AS jurisd_base_id,prefix,bbox,geom_country,
@@ -235,7 +211,6 @@ $f$ LANGUAGE SQL;
 COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
--- SELECT osmc.update_coverage_isolevel3('BR-PA-Altamira',0::smallint,'{021G,062H,063G,063H,068G,068H,069G,069H,06AG,06AH,06BG,06BH}'::text[],'{0211FP,0211FS,0211FT,0211FV,0211FZ,02135N,02135Q,0211K,0211L,0211M,0213K,0214L}'::text[]);
 -- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c34p,c34z,c35k,c35s,c35t}'::text[],'{}'::text[]);
 
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
@@ -260,7 +235,6 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,smallint,text[],tex
 ;
 -- SELECT osmc.update_coverage_isolevel3_161c('BR-PA-Altamira',0::smallint,'{21G,62H,63G,63H,68G,68H,69G,69H,6AG,6AH,6BG,6BH}'::text[],'{211FP,211FS,211FT,211FV,211FZ,2135N,2135Q,211K,211L,211M,213K,214L}'::text[]);
 
--- gerar string a partir dos bits e não do case prefix
 CREATE or replace FUNCTION osmc.generate_cover_csv(
   p_isolabel_ext text,
   p_path text
@@ -329,7 +303,6 @@ $f$ LANGUAGE PLpgSQL;
 COMMENT ON FUNCTION osmc.generate_cover_csv(text,text)
   IS 'Generate csv with isolevel=3 coverage and overlay in separate array.'
 ;
-
 -- SELECT osmc.generate_cover_csv('BR','/tmp/pg_io/coveragebr.csv');
 -- SELECT osmc.generate_cover_csv('CO','/tmp/pg_io/coverageco.csv');
 -- SELECT osmc.generate_cover_csv('UY','/tmp/pg_io/coverageuy.csv');
@@ -382,7 +355,6 @@ FROM
           )
 
     ) s
-    ORDER BY p.isolabel_ext, order_prefix
   ) x,
   -- geom jurisdiction
   LATERAL
@@ -453,7 +425,7 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
         SELECT geom, geom
         FROM
         (
-          SELECT (ST_Dump(ST_GeneratePoints(ST_Difference(geom,ST_Buffer(geom,-0.00005)),LEAST((FLOOR(ST_Perimeter(geom,true)))::int,50000)))).geom AS geom
+          SELECT (ST_Dump(ST_GeneratePoints(ST_Difference(geom,ST_Buffer(geom,-0,00005)),LEAST((FLOOR(ST_Perimeter(geom,true)))::int,50000)))).geom AS geom
           FROM jurisd_geom
         ) h
     ) b
@@ -473,6 +445,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
     (
         SELECT *
         FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction,buffer_type)
+        WHERE ggeohash IS NOT NULL
     )
     SELECT *
     FROM
@@ -558,55 +531,50 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     GROUP BY 1
                 ) AS cover
         ) t2
+        UNION ALL
+
+        -- coverage with 1-digit cells
+        SELECT cardinality(cover) AS number_cells, cover
+        FROM
+        (
+            SELECT
+                ARRAY(
+                    SELECT substring(ggeohash,1,1) AS cell
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover
+        ) t1
     ) t
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.generate_cover(text,float,integer)
   IS 'Simple generation of jurisdiction coverage possibilities. No overlay.'
 ;
--- SELECT * FROM osmc.generate_cover('BR-SP-SaoPaulo');
+-- SELECT * FROM osmc.generate_cover('CO-AMA-ElEncanto');
 
 CREATE or replace FUNCTION osmc.select_cover(
   p_isolabel_ext text,
   p_fraction     float DEFAULT 0.005, -- fraction of ST_CharactDiam
   buffer_type    integer DEFAULT 0
-) RETURNS TABLE(p_isolabel_ext text, srid int, jurisd_base_id int, number_cells int, cover text[], cover_scientific text[]) AS $f$
-SELECT p_isolabel_ext::text, srid, jurisd_base_id, number_cells, cover, cover_scientific
+) RETURNS TABLE(isolabel_ext text, number_cells int, cover text[], cover_scientific text[]) AS $f$
+SELECT p_isolabel_ext::text, number_cells, cover,
+  ARRAY(
+      SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(iso))::int),16)
+      FROM unnest(cover) t(code)
+  ) AS cover_scientific --generate array in scientific base16h
 FROM
 (
     SELECT number_cells, cover, split_part(p_isolabel_ext,'-',1) AS iso
     FROM osmc.generate_cover(p_isolabel_ext,p_fraction,buffer_type)
-    WHERE number_cells < 32 -- MAX 31 cells
+    WHERE number_cells < 33 -- MAX 32 cells
     ORDER BY number_cells DESC
-) p,
--- generate array in scientific base16h
-LATERAL (
-    SELECT
-        ARRAY(
-            SELECT
-                -- CASE
-                -- WHEN iso     IN ('BR') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),76),16),76)
-                -- WHEN iso     IN ('UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),858),16),858)
-                -- WHEN iso     IN ('CO') THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),170),16)
-                -- WHEN iso     IN ('EC') THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),218),16)
-                -- ELSE NULL
-                -- END
-                natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(iso))::int),16)
-            FROM unnest(cover) t(code)
-        ) AS cover_scientific,
-        (('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(iso))::int AS srid,
-        (('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(iso))::int AS jurisd_base_id
-) q,
---
--- LATERAL (SELECT (osmc.check_coverage(p_isolabel_ext,array_remove(cover_scientific,'N')))) r
-LATERAL (SELECT * FROM osmc.check_coverage(p_isolabel_ext,cover_scientific)) r
--- WHERE r.unioncontainsproperly IS TRUE
+) p
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
   IS 'Returns first coverage with less than 32 cells.'
 ;
--- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('BR-SP-SaoPaulo');
+-- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('CO-AMA-ElEncanto');
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas',0.5,0);
 
 CREATE or replace FUNCTION osmc.cover_child_geometries(
@@ -751,16 +719,9 @@ ON r.code_child = s.code_child
 DROP TABLE osmc.tmp_coverage_city;
 CREATE TABLE osmc.tmp_coverage_city (
   isolabel_ext text   NOT NULL,
-  srid         int    NOT NULL,
-  jurisd_base_id int NOT NULL,
   number_cells int NOT NULL,
   cover        text[] NOT NULL,
-  cover_scientific text[] NOT NULL -- 16h
-);
-
-DROP TABLE osmc.tmp_check_coverage;
-CREATE TABLE osmc.tmp_check_coverage (
-  isolabel_ext text   NOT NULL,
+  cover_scientific text[] NOT NULL, -- 16h
   prefix text[],
   order_prefix int[],
   ContainsProperly boolean[],
@@ -771,7 +732,7 @@ CREATE TABLE osmc.tmp_check_coverage (
 -- Tabela para armazenar os isolabel_ext que terão cobertura gerada
 DROP TABLE osmc.tmp_gerar;
 CREATE TABLE osmc.tmp_gerar AS
-SELECT isolabel_ext, true AS generate FROM optim.jurisdiction WHERE isolabel_ext LIKE 'BR-%-%' AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage)
+SELECT isolabel_ext, true AS generate FROM optim.jurisdiction_geom WHERE isolabel_ext LIKE 'CO-%-%' AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage) ORDER BY ST_Area(geom,true)
 ;
 
 -- COBERTURAS para isolabel_ext em osmc.tmp_gerar
@@ -786,13 +747,7 @@ BEGIN
     FOR r IN EXECUTE format('SELECT isolabel_ext FROM osmc.tmp_gerar WHERE generate IS TRUE;','')
     LOOP
         RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
-        INSERT INTO osmc.tmp_coverage_city SELECT * FROM osmc.select_cover((r.isolabel_ext)::text,p_fraction);
-
-        INSERT INTO osmc.tmp_check_coverage
-        SELECT (osmc.check_coverage(isolabel_ext,array_remove(cover_scientific,'N'))).*
-        FROM osmc.tmp_coverage_city
-        WHERE isolabel_ext = '(r.isolabel_ext)::text';
-
+        INSERT INTO osmc.tmp_coverage_city SELECT t.isolabel_ext, t.number_cells, t.cover, t.cover_scientific, s.prefix, s.order_prefix, s.ContainsProperly, s.Intersects, s.UnionContainsProperly FROM osmc.select_cover((r.isolabel_ext)::text,p_fraction) t, LATERAL (SELECT (osmc.check_coverage((r.isolabel_ext)::text,t.cover_scientific)).* ) s;
         COMMIT;
         RAISE NOTICE 'Cobertura inserida';
     END LOOP;
