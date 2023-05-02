@@ -684,7 +684,7 @@ CREATE or replace FUNCTION osmc.encode_short_code(
         WHERE is_country IS FALSE AND (cbits)::bit(14) = p_codebits::bit(14)
         AND CASE WHEN p_isolabel_ext IS NULL THEN TRUE ELSE isolabel_ext = p_isolabel_ext END
         AND CASE WHEN is_contained IS FALSE THEN ST_Contains(geom,p_geom) ELSE TRUE END
-        AND cbits # substring(p_codebits FROM 1 FOR length(cbits)) = substring(0::bit(35) FROM 1 FOR length(cbits))
+        AND cbits # substring(p_codebits FROM 1 FOR length(cbits)) = substring(0::bit(40) FROM 1 FOR length(cbits))
         ORDER BY length(kx_prefix) DESC
         LIMIT 1
     ) t
