@@ -572,7 +572,7 @@ FROM
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
-  IS 'Returns first coverage with less than 32 cells.'
+  IS 'Returns coverages with less than 33 cells.'
 ;
 -- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('CO-AMA-ElEncanto');
 -- SELECT * FROM osmc.select_cover('BR-SP-Campinas',0.5,0);
@@ -709,14 +709,7 @@ LEFT JOIN tmp_orig.tunja_child s
 ON r.code_child = s.code_child
 ;
 
-*/
-
-
-
-/*
-------------------
-
-DROP TABLE osmc.tmp_coverage_city;
+DROP TABLE osmc.tmp_coverage_city CASCADE;
 CREATE TABLE osmc.tmp_coverage_city (
   isolabel_ext text   NOT NULL,
   number_cells int NOT NULL,
@@ -732,7 +725,7 @@ CREATE TABLE osmc.tmp_coverage_city (
 -- Tabela para armazenar os isolabel_ext que terão cobertura gerada
 DROP TABLE osmc.tmp_gerar;
 CREATE TABLE osmc.tmp_gerar AS
-SELECT isolabel_ext, true AS generate FROM optim.jurisdiction_geom WHERE isolabel_ext LIKE 'CO-%-%' AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage) ORDER BY ST_Area(geom,true)
+SELECT isolabel_ext, true AS generate FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext LIKE 'CO-%-%' AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage) ORDER BY ST_Area(geom,true)
 ;
 
 -- COBERTURAS para isolabel_ext em osmc.tmp_gerar
@@ -754,63 +747,60 @@ BEGIN
 END;
 $$;
 
--- ADD COVER TYPE 1 in osmc.coverage
-CREATE OR replace PROCEDURE osmc.cover_loop2(
-)
-LANGUAGE PLpgSQL
-AS $$
-DECLARE
-    r RECORD;
-BEGIN
-    FOR r IN (SELECT isolabel_ext, prefix FROM osmc.tmp_check_coverage WHERE UnionContainsProperly is true AND NOT (false = ANY(Intersects)))
-    LOOP
-        RAISE NOTICE 'Add cobertura de: %', r.isolabel_ext;
-        PERFORM osmc.update_coverage_isolevel3(r.isolabel_ext,r.prefix);
-        COMMIT;
-        RAISE NOTICE 'Cobertura inserida';
-    END LOOP;
-END;
-$$;
-
 
 -- tmux
 psql postgres://postgres@localhost/dl06t_main -c "CALL osmc.cover_loop();" &> log
 
+CREATE TABLE osmc.tmp_coverage_cityold AS
+SELECT * FROM osmc.tmp_coverage_city;
+
+CREATE VIEW osmc.tmp_coverageselected AS
+SELECT *
+FROM
+(
+  SELECT row_number() OVER (PARTITION BY isolabel_ext ORDER BY number_cells DESC, (length(cover[0])) DESC) AS gid, *
+  FROM osmc.tmp_coverage_city r
+  WHERE number_cells <26
+) s
+WHERE gid=1 AND UnionContainsProperly is FALSE
+;
+
+-- COUNTs
 -- COVER TYPE 1
 -- Return coverage OK
 SELECT count(*)
-FROM osmc.tmp_check_coverage
+FROM osmc.tmp_coverageselected
 WHERE UnionContainsProperly is true AND NOT (false = ANY(Intersects));
 
 -- COVER TYPE 2
 -- Return complete coverage with non-intercepting cells.
 -- Solution: remove cells that do not intersect
 SELECT count(*)
-FROM osmc.tmp_check_coverage
+FROM osmc.tmp_coverageselected
 WHERE UnionContainsProperly is true AND false = ANY(Intersects);
 
 -- COVER TYPE 3
 -- Return partial coverage.
 -- Possible solution: increase amount of points
 SELECT count(*)
-FROM osmc.tmp_check_coverage
+FROM osmc.tmp_coverageselected
 WHERE (UnionContainsProperly is false) AND NOT (false = ANY(Intersects));
 
 -- COVER TYPE 4
 -- Return partial coverage with non-intercepting cells.
 -- Possible solution: increase amount of points and remove cells that do not intersect
 SELECT count(*)
-FROM osmc.tmp_check_coverage
+FROM osmc.tmp_coverageselected
 WHERE UnionContainsProperly is false AND false = ANY(Intersects);
 
 
--- ADD COVER TYPE 1, use osmc.cover_loop2
-SELECT osmc.update_coverage_isolevel3(isolabel_ext,prefix)
-FROM osmc.tmp_check_coverage
+-- ADD COVER TYPE 1
+SELECT osmc.update_coverage_isolevel3(isolabel_ext,0::smallint,prefix,'{}'::text[])
+FROM osmc.tmp_coverageselected
 WHERE UnionContainsProperly is true AND NOT (false = ANY(Intersects));
 
 -- ADD COVER TYPE 2
-SELECT osmc.update_coverage_isolevel3(isolabel_ext,prefix)
+SELECT osmc.update_coverage_isolevel3(isolabel_ext,0::smallint,prefix,'{}'::text[])
 FROM
 (
   SELECT MAX(isolabel_ext) AS isolabel_ext, array_agg(prefix) AS prefix
@@ -818,7 +808,7 @@ FROM
   FROM
   (
     SELECT isolabel_ext, unnest(prefix) AS prefix, unnest(Intersects) AS Intersects
-    FROM osmc.tmp_check_coverage
+    FROM osmc.tmp_coverageselected
     WHERE UnionContainsProperly is true AND false = ANY(Intersects)
   ) x
   WHERE Intersects IS TRUE
@@ -837,7 +827,6 @@ psql postgres://postgres@localhost/dl03t_main -c "CALL osmc.cover_loop(0.001);" 
 
 
 -- para checar coberturas existentes:
--- corrigir manualmente com: SELECT osmc.update_coverage_isolevel3('BR-PA-PortoMoz','{x,y,z}'::text[]);
 SELECT isolabel_ext, prefix, intersects, unioncontainsproperly
 FROM
 (
@@ -851,7 +840,6 @@ FROM
 ) s
 WHERE unioncontainsproperly is false or false = ANY(intersects);
 
+SELECT osmc.update_coverage_isolevel3('CO-AMA-ElEncanto',0::smallint,'{89q,8bg,8cg,8cq,8dq,8eg,8dg}'::text[],'{}'::text[]);
 
-SELECT osmc.update_coverage_isolevel3('BR-PA-PortoMoz','{}'::text[]);
-SELECT * FROM osmc.tmp_coverage_city WHERE isolabel_ext ='BR-AM-Manaus'
 */
