@@ -499,7 +499,8 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
                   'code', CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END,
                   'area', ST_Area(geom_cell),
                   'side', SQRT(ST_Area(geom_cell)),
-                  'base', base
+                  'base', base,
+                  'jurisd_base_id',p_jurisd_base_id
                   ))
           )::jsonb) || m.subcells
         )
