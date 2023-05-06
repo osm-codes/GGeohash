@@ -818,7 +818,8 @@ COMMENT ON TABLE osmc.tmp_coverage_city IS 'Armazena coberturas geradas pela fun
 -- Tabela para armazenar os isolabel_ext que terão cobertura gerada
 DROP TABLE osmc.tmp_gerar;
 CREATE TABLE osmc.tmp_gerar AS
-SELECT isolabel_ext, true AS generate FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext LIKE 'BR-%-%' /*AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage)*/ ORDER BY ST_Area(geom,true)
+-- SELECT isolabel_ext, true AS generate FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext LIKE 'BR-%-%' AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage) ORDER BY ST_Area(geom,true)
+SELECT isolabel_ext, true AS generate FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext LIKE 'BR-%-%' ORDER BY ST_Area(geom,true)
 ;
 
 -- COBERTURAS para isolabel_ext em osmc.tmp_gerar
