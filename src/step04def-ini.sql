@@ -657,6 +657,83 @@ COMMENT ON FUNCTION osmc.cover_child_geometries(text,text,int)
   IS 'Child geometries of the main cover.'
 ;
 
+CREATE or replace FUNCTION osmc.cellContainsProperly(
+  p_val text,  -- input
+  p_isolabel_ext text,
+  p_jurisd_base_id int,
+  p_country_iso text,
+  p_srid int
+) RETURNS text AS $f$
+DECLARE
+v boolean;
+BEGIN
+ v:= (SELECT ST_ContainsProperly(
+  (
+    SELECT ggeohash.draw_cell_bybox(ggeohash.decode_box2(osmc.vbit_withoutL0(natcod.b32nvu_to_vbit(p_val),p_country_iso,32),bbox, CASE WHEN p_country_iso = 'EC' THEN TRUE ELSE FALSE END),false,ST_SRID(geom)) AS geom
+    FROM osmc.coverage
+    WHERE is_country IS TRUE AND cbits::bit(10) = p_jurisd_base_id::bit(10) AND ( ( osmc.extract_L0bits32(cbits,p_country_iso) # (natcod.b32nvu_to_vbit(p_val))::bit(5) ) = 0::bit(5) ) -- 1 dígito  base 32nvu
+  )
+  ,
+  (
+    SELECT ST_Transform(g.geom,p_srid)
+    FROM optim.vw01full_jurisdiction_geom g
+    WHERE isolabel_ext = p_isolabel_ext
+  )
+));
+    -- RAISE NOTICE  'val % %', p_val,v;
+  IF v is TRUE OR length(p_val) = 1 THEN
+    RETURN p_val;
+  ELSE
+  RETURN osmc.cellContainsProperly(substring(p_val,1,length(p_val)-1),p_isolabel_ext,p_jurisd_base_id,p_country_iso,p_srid);
+  END IF;
+END
+$f$ LANGUAGE PLpgSQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.cellContainsProperly
+ IS 'Retorna a maior célula que contem a jurisdição.'
+;
+-- SELECT osmc.cellContainsProperly('7XSU0YTNP','BR-CE-Sobral',76,'BR',952019);
+
+-- DROP VIEW osmc.tmpvwcellContainsProperly;
+CREATE or replace VIEW osmc.tmpvwcellContainsProperly AS
+  SELECT isolabel_ext, osmc.cellContainsProperly(ggeohash,isolabel_ext,jurisd_base_id,country_iso,srid)  /*, natcod.b32nvu_to_vbit(ggeohash) AS codebits*/
+  FROM
+  (
+    SELECT isolabel_ext, jurisd_base_id, split_part(isolabel_ext,'-',1) AS country_iso, ((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int) AS srid,
+          CASE split_part(isolabel_ext,'-',1)
+            WHEN 'BR' THEN osmc.encode_point_brazil(geom_centroid)
+            WHEN 'CO' THEN osmc.encode_point_colombia(geom_centroid)
+          END AS ggeohash
+    FROM
+    (
+        SELECT isolabel_ext, jurisd_base_id, ST_PointOnSurface(ST_Transform(g.geom,((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int))) AS geom_centroid
+        FROM optim.vw01full_jurisdiction_geom g
+        WHERE jurisd_base_id IN (170,76) AND isolevel = 3
+    ) r
+  ) s
+;
+
+-- DROP VIEW osmc.tmpvw10;
+CREATE or replace VIEW osmc.tmpvw10 AS
+SELECT isolabel_ext, size_prefix
+FROM
+(
+  SELECT isolabel_ext, size_prefix,
+        row_number() OVER (PARTITION BY split_part(isolabel_ext,'-',1) ORDER BY size_prefix ASC ,isolabel_ext ASC)  AS id,
+        row_number() OVER (PARTITION BY split_part(isolabel_ext,'-',1) ORDER BY size_prefix DESC,isolabel_ext DESC) AS id2
+  FROM
+  (
+    SELECT isolabel_ext, MAX(length(kx_prefix)) AS size_prefix
+    FROM osmc.coverage
+    WHERE is_overlay IS FALSE AND isolabel_ext LIKE '%-%'
+    GROUP BY isolabel_ext
+    ORDER BY split_part(isolabel_ext,'-',1), 2, isolabel_ext
+  ) r
+) s
+WHERE id < 11 OR id2 < 11
+;
+COMMENT ON VIEW osmc.tmpvw10 IS '10 maiores e menores coberturas de cada país.';
+
+
 /*
 EXPLAIN ANALYZE SELECT osmc.cover_child_geometries('0977M,0977J,0977K,0975M,0975L','CO-BOY-Tunja',16);
 
@@ -708,8 +785,12 @@ FROM
 LEFT JOIN tmp_orig.tunja_child s
 ON r.code_child = s.code_child
 ;
+*/
 
-DROP TABLE osmc.tmp_coverage_city CASCADE;
+-----------
+
+/*
+--DROP TABLE osmc.tmp_coverage_city CASCADE;
 CREATE TABLE osmc.tmp_coverage_city (
   isolabel_ext text   NOT NULL,
   number_cells int NOT NULL,
@@ -721,6 +802,18 @@ CREATE TABLE osmc.tmp_coverage_city (
   Intersects boolean[],
   UnionContainsProperly boolean
 );
+COMMENT ON COLUMN osmc.tmp_coverage_city.isolabel_ext          IS 'ISO 3166-1 alpha-2 code and name (camel case); e.g. BR-SP-SaoPaulo.';
+COMMENT ON COLUMN osmc.tmp_coverage_city.number_cells          IS 'Número de células na cobertura';
+COMMENT ON COLUMN osmc.tmp_coverage_city.cover                 IS 'Prefixos em 32nvu.';
+COMMENT ON COLUMN osmc.tmp_coverage_city.cover_scientific      IS 'Prefixos em 16h.';
+COMMENT ON COLUMN osmc.tmp_coverage_city.prefix                IS 'Prefixos em 16h ordenados.';
+COMMENT ON COLUMN osmc.tmp_coverage_city.order_prefix          IS 'Posição dos prefixos em order_prefix.';
+COMMENT ON COLUMN osmc.tmp_coverage_city.ContainsProperly      IS 'Verdadeiro se prefixo está contido na jurisdição.';
+COMMENT ON COLUMN osmc.tmp_coverage_city.Intersects            IS 'Verdadeiro se prefixo intercepta a jurisdição.';
+COMMENT ON COLUMN osmc.tmp_coverage_city.UnionContainsProperly IS 'Verdadeiro se a união dos prefixos contém a jurisdição.';
+
+COMMENT ON TABLE osmc.tmp_coverage_city IS 'Armazena coberturas geradas pela função osmc.select_cover e pelo procedimento osmc.cover_loop.';
+
 
 -- Tabela para armazenar os isolabel_ext que terão cobertura gerada
 DROP TABLE osmc.tmp_gerar;
