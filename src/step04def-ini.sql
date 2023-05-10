@@ -212,6 +212,8 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
 -- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359g,c359q,c35ag,c35bg}'::text[],'{}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3('CO-DC-Bogota',0::smallint,'{9ad,9af,9ba,c10,c12,c18}'::text[],'{}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3('CO-ANT-Medellin',0::smallint,'{67d9q,67dag,67daq,67dbg,67dbq,67deg,67deq,67dfg,67dfq,67f0g,67f0q,67f1g,67f1q,67f2g,67f2q,67f3g,67f3q,67f4g,67f4q,67f5g,67f5q,67f6g}'::text[],'{}'::text[]);
 
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
   p_isolabel_ext text,
