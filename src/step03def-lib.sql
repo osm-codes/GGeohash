@@ -389,7 +389,7 @@ CREATE or replace FUNCTION osmc.vbit_from_b32nvu_to_vbit_16h(
   SELECT
     CASE
     WHEN p_iso IN (76,868,218) THEN b'000' || p_x         -- 5bits MSb viram 8
-    WHEN p_iso IN (170)        THEN substring(p_x from 2) -- 5bits MSb viram 4
+    WHEN p_iso IN (170)        THEN substring(p_x,2,5) || substring(p_x from 9) -- 5bits MSb viram 4
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -404,7 +404,7 @@ CREATE or replace FUNCTION osmc.vbit_from_16h_to_vbit_b32nvu(
   SELECT
     CASE
     WHEN p_iso IN (76,868,218) THEN substring(p_x from 4) -- 8bits MSb viram 5
-    WHEN p_iso IN (170)        THEN b'0' || p_x           -- 4bits MSb viram 5
+    WHEN p_iso IN (170)        THEN b'0' || substring(p_x,1,4) || b'00' || substring(p_x from 5) -- 4bits MSb viram 5
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -734,7 +734,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
     (
       SELECT bit_string,
       ggeohash.draw_cell_bybox(ggeohash.decode_box2(bit_string,p_bbox,p_lonlat),false,p_srid) AS geom_cell,
-      upper(natcod.vbit_to_strstd( osmc.vbit_from_16h_to_vbit_b32nvu((p_l0code||bit_string),p_jurisd_base_id),'32nvu')) AS code,
+      upper(natcod.vbit_to_strstd( osmc.vbit_from_16h_to_vbit_b32nvu((p_l0code || bit_string),p_jurisd_base_id),'32nvu')) AS code,
       p_l0code||bit_string AS codebits
       FROM ggeohash.encode3(ST_X(p_geom),ST_Y(p_geom),p_bbox,p_bit_length,p_lonlat) r(bit_string)
     ) c
@@ -780,13 +780,12 @@ CREATE or replace FUNCTION osmc.encode_postal_co(
 ) RETURNS jsonb AS $f$
     SELECT osmc.encode_postal(p_geom,
       CASE
-      WHEN p_uncertainty > -1 AND x > 2  THEN ((x-2)/5)*5
-      WHEN p_uncertainty > -1 AND x <= 2 THEN 0
+      WHEN p_uncertainty > -1 THEN ((x-2)/5)*5 +3
       ELSE 35
       END,
       9377,
       CASE
-        WHEN x > 32 THEN 0
+        WHEN x = 40 THEN 0
         ELSE p_grid_size
       END
       ,bbox,osmc.extract_L0bits(cbits,'CO'),170,FALSE,2,p_isolabel_ext)

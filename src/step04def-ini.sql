@@ -211,7 +211,7 @@ $f$ LANGUAGE SQL;
 COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
--- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c34p,c34z,c35k,c35s,c35t}'::text[],'{}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359g,c359q,c35ag,c35bg}'::text[],'{}'::text[]);
 
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
   p_isolabel_ext text,
@@ -376,6 +376,8 @@ COMMENT ON FUNCTION osmc.check_coverage(text,text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
 -- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347k,c347n,c347p,c347s,c347t,c347y,c347z,c34dn,c34dp,c34dy,c34dz,c352k,c352s,c352t,c352y,c352z,c358j,c358k,c358n,c358p,c358s,c358t,c358y,c358z,c359k,c359s,c359t,c35an,c35bj}'::text[]);
+
+-- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359g,c359q,c35ag,c35bg}'::text[]);
 
 ------------------
 -- generate coverage :
