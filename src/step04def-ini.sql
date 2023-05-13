@@ -155,12 +155,7 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
   SELECT jurisd_base_id::bit(10) || prefix_bits,isolabel_ext,cindex,bbox,p_status,FALSE,is_contained,is_overlay,kx_prefix,geom
   FROM
   (
-    SELECT prefix_bits,
-    CASE
-      WHEN ST_ContainsProperly(c.geom_transformed,ggeohash.draw_cell_bybox(bbox,false,b.srid)) IS FALSE
-      THEN TRUE
-      ELSE FALSE
-    END AS is_contained,
+    SELECT prefix_bits, ST_ContainsProperly(c.geom_transformed,ggeohash.draw_cell_bybox(bbox,false,b.srid)) AS is_contained,
     c.isolabel_ext, prefix, is_overlay,
     natcod.vbit_to_strstd((order_prefix::int)::bit(5),'32nvu') AS cindex,
     ST_Intersection(c.geom_transformed,ggeohash.draw_cell_bybox(bbox,false,b.srid)) AS geom,
@@ -211,9 +206,10 @@ $f$ LANGUAGE SQL;
 COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
--- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359g,c359q,c35ag,c35bg}'::text[],'{}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359q,c35ag,c35bg}'::text[],'{c3581r,c3581v,c3583h,c3583m,c3583r,c3583v,c3589h,c3589m,c3589v,c358ch,c358cr}'::text[]);
 -- SELECT osmc.update_coverage_isolevel3('CO-DC-Bogota',0::smallint,'{9ad,9af,9ba,c10,c12,c18}'::text[],'{}'::text[]);
 -- SELECT osmc.update_coverage_isolevel3('CO-ANT-Medellin',0::smallint,'{67d9q,67dag,67daq,67dbg,67dbq,67deg,67deq,67dfg,67dfq,67f0g,67f0q,67f1g,67f1q,67f2g,67f2q,67f3g,67f3q,67f4g,67f4q,67f5g,67f5q,67f6g}'::text[],'{}'::text[]);
+-- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359q,c35ag,c35bg}'::text[]);
 
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
   p_isolabel_ext text,
@@ -377,7 +373,7 @@ $f$ LANGUAGE SQL;
 COMMENT ON FUNCTION osmc.check_coverage(text,text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
--- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347k,c347n,c347p,c347s,c347t,c347y,c347z,c34dn,c34dp,c34dy,c34dz,c352k,c352s,c352t,c352y,c352z,c358j,c358k,c358n,c358p,c358s,c358t,c358y,c358z,c359k,c359s,c359t,c35an,c35bj}'::text[]);
+-- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347k,c347n,c347p,c347s,c347t,c347y,c347z,c34dn,c34dp,c34dy,c34dz,c352k,c352s,c352t,c352y,c352z,c358j,c358k,c358n,c358p,c358s,c358t,c358y,c358z,c359s,c359t,c35an,c35bj}'::text[]);
 
 -- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359g,c359q,c35ag,c35bg}'::text[]);
 
@@ -584,7 +580,7 @@ COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
 CREATE or replace FUNCTION osmc.cover_child_geometries(
    p_code         text, -- e.g.: '0977M,0977J,0977K,0975M,0975L' in 16h
    p_isolabel_ext text, -- e.g.: 'CO-BOY-Tunja'
-   p_base         int  DEFAULT 16 -- 16h
+   p_base         int  DEFAULT 16 -- 16: 16h, 18: 16h1c
 ) RETURNS  TABLE (code text, code_child text, geom geometry) AS $f$
     SELECT
             c.code16h AS code,
@@ -594,12 +590,14 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
     (
         SELECT DISTINCT
 
+        -- trunca code16h
         CASE
         WHEN length(code16h) > 12 AND split_part(p_isolabel_ext,'-',1) IN ('BR')           THEN substring(code16h,1,12)
         WHEN length(code16h) > 11 AND split_part(p_isolabel_ext,'-',1) IN ('EC','CO','UY') THEN substring(code16h,1,11)
         ELSE code16h
         END AS code16h,
 
+        -- converte code16h->vbit
         CASE
         WHEN length(code16h) > 12 AND split_part(p_isolabel_ext,'-',1) IN ('BR')           THEN natcod.baseh_to_vbit(substring(code16h,1,12),16)
         WHEN length(code16h) > 11 AND split_part(p_isolabel_ext,'-',1) IN ('EC','CO','UY') THEN natcod.baseh_to_vbit(substring(code16h,1,11),16)
