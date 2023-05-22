@@ -432,11 +432,12 @@ COMMENT ON FUNCTION osmc.vbit_withoutL0(varbit,text,int)
 -- specific encode for b32nvu and 8 digits:
 
 CREATE or replace FUNCTION osmc.encode_point_brazil(
-  p_geom  geometry(POINT)
+  p_geom       geometry(POINT),
+  p_bit_length int DEFAULT 40
 ) RETURNS text AS $wrap$
   SELECT
     (
-      SELECT (natcod.vbit_to_strstd(osmc.extract_L0bits32(cbits,'BR') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,40,false),'32nvu'))
+      SELECT (natcod.vbit_to_strstd(osmc.extract_L0bits32(cbits,'BR') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,p_bit_length,false),'32nvu'))
       FROM osmc.coverage
       WHERE is_country IS TRUE AND cbits::bit(10) = 76::bit(10) AND ST_Contains(geom,x)
     )
@@ -447,11 +448,12 @@ COMMENT ON FUNCTION osmc.encode_point_brazil(geometry(POINT))
 ;
 
 CREATE or replace FUNCTION osmc.encode_point_colombia(
-  p_geom  geometry(POINT)
+  p_geom       geometry(POINT),
+  p_bit_length int DEFAULT 40
 ) RETURNS text AS $wrap$
   SELECT
     (
-      SELECT (natcod.vbit_to_strstd(osmc.extract_L0bits32(cbits,'CO') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,40,false),'32nvu'))
+      SELECT (natcod.vbit_to_strstd(osmc.extract_L0bits32(cbits,'CO') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,p_bit_length,false),'32nvu'))
       FROM osmc.coverage
       WHERE is_country IS TRUE AND cbits::bit(10) = 170::bit(10) AND ST_Contains(geom,x)
     )

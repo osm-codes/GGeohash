@@ -735,6 +735,11 @@ WHERE id < 11 OR id2 < 11
 ;
 COMMENT ON VIEW osmc.tmpvw10 IS '10 maiores e menores coberturas de cada país.';
 
+CREATE or replace VIEW osmc.tmpvwpoeira AS
+SELECT *
+FROM osmc.coverage
+WHERE ST_Area(geom) < 100
+;
 
 /*
 EXPLAIN ANALYZE SELECT osmc.cover_child_geometries('0977M,0977J,0977K,0975M,0975L','CO-BOY-Tunja',16);
