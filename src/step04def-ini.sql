@@ -439,7 +439,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
   p_isolabel_ext text,
   p_fraction     float DEFAULT 0.005, -- fraction of ST_CharactDiam
   buffer_type    integer DEFAULT 0
-) RETURNS TABLE(number_cells int, cover text[]) AS $f$
+) RETURNS TABLE(number_cells int, length_cell int, cover text[]) AS $f$
 
     WITH list_ggeohash AS
     (
@@ -451,7 +451,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
     FROM
     (
         -- coverage with 7-digit cells
-        SELECT cardinality(cover) AS number_cells, cover
+        SELECT cardinality(cover) AS number_cells, 7 AS length_cell, cover
         FROM
         (
             SELECT
@@ -465,7 +465,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
         UNION ALL
 
         -- coverage with 6-digit cells
-        SELECT cardinality(cover) AS number_cells, cover
+        SELECT cardinality(cover) AS number_cells, 6, cover
         FROM
         (
             SELECT
@@ -479,7 +479,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
         UNION ALL
 
         -- coverage with 5-digit cells
-        SELECT cardinality(cover) AS number_cells, cover
+        SELECT cardinality(cover) AS number_cells, 5, cover
         FROM
         (
             SELECT
@@ -493,7 +493,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
         UNION ALL
 
         -- coverage with 4-digit cells
-        SELECT cardinality(cover) AS number_cells, cover
+        SELECT cardinality(cover) AS number_cells, 4, cover
         FROM
         (
             SELECT
@@ -507,7 +507,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
         UNION ALL
 
         -- coverage with 3-digit cells
-        SELECT cardinality(cover) AS number_cells, cover
+        SELECT cardinality(cover) AS number_cells, 3, cover
         FROM
         (
             SELECT
@@ -521,7 +521,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
         UNION ALL
 
         -- coverage with 2-digit cells
-        SELECT cardinality(cover) AS number_cells, cover
+        SELECT cardinality(cover) AS number_cells, 2, cover
         FROM
         (
             SELECT
@@ -534,7 +534,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
         UNION ALL
 
         -- coverage with 1-digit cells
-        SELECT cardinality(cover) AS number_cells, cover
+        SELECT cardinality(cover) AS number_cells, 1, cover
         FROM
         (
             SELECT
@@ -554,28 +554,29 @@ COMMENT ON FUNCTION osmc.generate_cover(text,float,integer)
 
 CREATE or replace FUNCTION osmc.select_cover(
   p_isolabel_ext text,
+  p_qtdmax_cell int DEFAULT 32,
   p_fraction     float DEFAULT 0.005, -- fraction of ST_CharactDiam
   buffer_type    integer DEFAULT 0
-) RETURNS TABLE(isolabel_ext text, number_cells int, cover text[], cover_scientific text[]) AS $f$
-SELECT p_isolabel_ext::text, number_cells, cover,
+) RETURNS TABLE(isolabel_ext text, number_cells int, length_cell int, cover text[], cover_scientific text[]) AS $f$
+SELECT p_isolabel_ext::text, number_cells, length_cell, cover,
   ARRAY(
       SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(iso))::int),16)
       FROM unnest(cover) t(code)
   ) AS cover_scientific --generate array in scientific base16h
 FROM
 (
-    SELECT number_cells, cover, split_part(p_isolabel_ext,'-',1) AS iso
+    SELECT number_cells, length_cell, cover, split_part(p_isolabel_ext,'-',1) AS iso
     FROM osmc.generate_cover(p_isolabel_ext,p_fraction,buffer_type)
-    WHERE number_cells < 33 -- MAX 32 cells
+    WHERE number_cells <= p_qtdmax_cell
     ORDER BY number_cells DESC
 ) p
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.select_cover(text,float,integer)
+COMMENT ON FUNCTION osmc.select_cover(text,int,float,integer)
   IS 'Returns coverages with less than 33 cells.'
 ;
 -- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('CO-AMA-ElEncanto');
--- SELECT * FROM osmc.select_cover('BR-SP-Campinas',0.5,0);
+-- SELECT * FROM osmc.select_cover('BR-SP-Campinas',32,0.5,0);
 
 CREATE or replace FUNCTION osmc.cover_child_geometries(
    p_code         text, -- e.g.: '0977M,0977J,0977K,0975M,0975L' in 16h
@@ -801,8 +802,8 @@ ON r.code_child = s.code_child
 CREATE TABLE osmc.tmp_coverage_city (
   isolabel_ext text   NOT NULL,
   number_cells int NOT NULL,
+  length_cell int NOT NULL,
   cover        text[] NOT NULL,
-  cover_scientific text[] NOT NULL, -- 16h
   prefix text[],
   order_prefix int[],
   ContainsProperly boolean[],
@@ -811,8 +812,8 @@ CREATE TABLE osmc.tmp_coverage_city (
 );
 COMMENT ON COLUMN osmc.tmp_coverage_city.isolabel_ext          IS 'ISO 3166-1 alpha-2 code and name (camel case); e.g. BR-SP-SaoPaulo.';
 COMMENT ON COLUMN osmc.tmp_coverage_city.number_cells          IS 'Número de células na cobertura';
+COMMENT ON COLUMN osmc.tmp_coverage_city.length_cell           IS 'Número de digitos da células na cobertura';
 COMMENT ON COLUMN osmc.tmp_coverage_city.cover                 IS 'Prefixos em 32nvu.';
-COMMENT ON COLUMN osmc.tmp_coverage_city.cover_scientific      IS 'Prefixos em 16h.';
 COMMENT ON COLUMN osmc.tmp_coverage_city.prefix                IS 'Prefixos em 16h ordenados.';
 COMMENT ON COLUMN osmc.tmp_coverage_city.order_prefix          IS 'Posição dos prefixos em order_prefix.';
 COMMENT ON COLUMN osmc.tmp_coverage_city.ContainsProperly      IS 'Verdadeiro se prefixo está contido na jurisdição.';
@@ -841,7 +842,7 @@ BEGIN
     FOR r IN EXECUTE format('SELECT isolabel_ext FROM osmc.tmp_gerar WHERE generate IS TRUE;','')
     LOOP
         RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
-        INSERT INTO osmc.tmp_coverage_city SELECT t.isolabel_ext, t.number_cells, t.cover, t.cover_scientific, s.prefix, s.order_prefix, s.ContainsProperly, s.Intersects, s.UnionContainsProperly FROM osmc.select_cover((r.isolabel_ext)::text,p_fraction) t, LATERAL (SELECT (osmc.check_coverage((r.isolabel_ext)::text,t.cover_scientific)).* ) s;
+        INSERT INTO osmc.tmp_coverage_city SELECT t.isolabel_ext, t.number_cells, t.length_cell, t.cover, s.prefix, s.order_prefix, s.ContainsProperly, s.Intersects, s.UnionContainsProperly FROM osmc.select_cover((r.isolabel_ext)::text,50,p_fraction) t, LATERAL (SELECT (osmc.check_coverage((r.isolabel_ext)::text,t.cover_scientific)).* ) s;
         COMMIT;
     END LOOP;
 END;
