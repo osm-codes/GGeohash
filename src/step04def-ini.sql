@@ -375,8 +375,6 @@ COMMENT ON FUNCTION osmc.check_coverage(text,text[])
 ;
 -- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347k,c347n,c347p,c347s,c347t,c347y,c347z,c34dn,c34dp,c34dy,c34dz,c352k,c352s,c352t,c352y,c352z,c358j,c358k,c358n,c358p,c358s,c358t,c358y,c358z,c359s,c359t,c35an,c35bj}'::text[]);
 
--- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359g,c359q,c35ag,c35bg}'::text[]);
-
 ------------------
 -- generate coverage :
 
@@ -439,11 +437,11 @@ CREATE or replace FUNCTION osmc.generate_cover(
   p_isolabel_ext text,
   p_fraction     float DEFAULT 0.005, -- fraction of ST_CharactDiam
   buffer_type    integer DEFAULT 0
-) RETURNS TABLE(number_cells int, length_cell int, cover text[]) AS $f$
+) RETURNS TABLE(number_cells int, length_cell int, cover text[], cover_scientific text[]) AS $f$
 
     WITH list_ggeohash AS
     (
-        SELECT *
+        SELECT *, (('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int AS jurisd_base_id
         FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction,buffer_type)
         WHERE ggeohash IS NOT NULL
     )
@@ -451,7 +449,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
     FROM
     (
         -- coverage with 7-digit cells
-        SELECT cardinality(cover) AS number_cells, 7 AS length_cell, cover
+        SELECT cardinality(cover) AS number_cells, 7 AS length_cell, cover, cover_scientific
         FROM
         (
             SELECT
@@ -459,13 +457,18 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     SELECT substring(ggeohash,1,7) AS cell
                     FROM list_ggeohash
                     GROUP BY 1
-                ) AS cover
+                ) AS cover,
+                ARRAY(
+                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,7)),jurisd_base_id),16)
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover_scientific --generate array in scientific base16h
         ) t7
 
         UNION ALL
 
         -- coverage with 6-digit cells
-        SELECT cardinality(cover) AS number_cells, 6, cover
+        SELECT cardinality(cover) AS number_cells, 6, cover, cover_scientific
         FROM
         (
             SELECT
@@ -473,13 +476,18 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     SELECT substring(ggeohash,1,6) AS cell
                     FROM list_ggeohash
                     GROUP BY 1
-                ) AS cover
+                ) AS cover,
+                ARRAY(
+                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,6)),jurisd_base_id),16)
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover_scientific --generate array in scientific base16h
         ) t6
 
         UNION ALL
 
         -- coverage with 5-digit cells
-        SELECT cardinality(cover) AS number_cells, 5, cover
+        SELECT cardinality(cover) AS number_cells, 5, cover, cover_scientific
         FROM
         (
             SELECT
@@ -487,13 +495,18 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     SELECT substring(ggeohash,1,5) AS cell
                     FROM list_ggeohash
                     GROUP BY 1
-                ) AS cover
+                ) AS cover,
+                ARRAY(
+                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,5)),jurisd_base_id),16)
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover_scientific --generate array in scientific base16h
         ) t5
 
         UNION ALL
 
         -- coverage with 4-digit cells
-        SELECT cardinality(cover) AS number_cells, 4, cover
+        SELECT cardinality(cover) AS number_cells, 4, cover, cover_scientific
         FROM
         (
             SELECT
@@ -501,13 +514,18 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     SELECT substring(ggeohash,1,4) AS cell
                     FROM list_ggeohash
                     GROUP BY 1
-                ) AS cover
+                ) AS cover,
+                ARRAY(
+                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,5)),jurisd_base_id),16)
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover_scientific --generate array in scientific base16h
         ) t4
 
         UNION ALL
 
         -- coverage with 3-digit cells
-        SELECT cardinality(cover) AS number_cells, 3, cover
+        SELECT cardinality(cover) AS number_cells, 3, cover, cover_scientific
         FROM
         (
             SELECT
@@ -515,13 +533,18 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     SELECT substring(ggeohash,1,3) AS cell
                     FROM list_ggeohash
                     GROUP BY 1
-                ) AS cover
+                ) AS cover,
+                ARRAY(
+                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,3)),jurisd_base_id),16)
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover_scientific --generate array in scientific base16h
         ) t3
 
         UNION ALL
 
         -- coverage with 2-digit cells
-        SELECT cardinality(cover) AS number_cells, 2, cover
+        SELECT cardinality(cover) AS number_cells, 2, cover, cover_scientific
         FROM
         (
             SELECT
@@ -529,12 +552,17 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     SELECT substring(ggeohash,1,2) AS cell
                     FROM list_ggeohash
                     GROUP BY 1
-                ) AS cover
+                ) AS cover,
+                ARRAY(
+                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,2)),jurisd_base_id),16)
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover_scientific --generate array in scientific base16h
         ) t2
         UNION ALL
 
         -- coverage with 1-digit cells
-        SELECT cardinality(cover) AS number_cells, 1, cover
+        SELECT cardinality(cover) AS number_cells, 1, cover, cover_scientific
         FROM
         (
             SELECT
@@ -542,7 +570,12 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     SELECT substring(ggeohash,1,1) AS cell
                     FROM list_ggeohash
                     GROUP BY 1
-                ) AS cover
+                ) AS cover,
+                ARRAY(
+                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,1)),jurisd_base_id),16)
+                    FROM list_ggeohash
+                    GROUP BY 1
+                ) AS cover_scientific --generate array in scientific base16h
         ) t1
     ) t
 ;
@@ -551,32 +584,6 @@ COMMENT ON FUNCTION osmc.generate_cover(text,float,integer)
   IS 'Simple generation of jurisdiction coverage possibilities. No overlay.'
 ;
 -- SELECT * FROM osmc.generate_cover('CO-AMA-ElEncanto');
-
-CREATE or replace FUNCTION osmc.select_cover(
-  p_isolabel_ext text,
-  p_qtdmax_cell int DEFAULT 32,
-  p_fraction     float DEFAULT 0.005, -- fraction of ST_CharactDiam
-  buffer_type    integer DEFAULT 0
-) RETURNS TABLE(isolabel_ext text, number_cells int, length_cell int, cover text[], cover_scientific text[]) AS $f$
-SELECT p_isolabel_ext::text, number_cells, length_cell, cover,
-  ARRAY(
-      SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(code),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(iso))::int),16)
-      FROM unnest(cover) t(code)
-  ) AS cover_scientific --generate array in scientific base16h
-FROM
-(
-    SELECT number_cells, length_cell, cover, split_part(p_isolabel_ext,'-',1) AS iso
-    FROM osmc.generate_cover(p_isolabel_ext,p_fraction,buffer_type)
-    WHERE number_cells <= p_qtdmax_cell
-    ORDER BY number_cells DESC
-) p
-;
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.select_cover(text,int,float,integer)
-  IS 'Returns coverages with less than 33 cells.'
-;
--- EXPLAIN ANALYSE SELECT * FROM osmc.select_cover('CO-AMA-ElEncanto');
--- SELECT * FROM osmc.select_cover('BR-SP-Campinas',32,0.5,0);
 
 CREATE or replace FUNCTION osmc.cover_child_geometries(
    p_code         text, -- e.g.: '0977M,0977J,0977K,0975M,0975L' in 16h
@@ -827,7 +834,7 @@ COMMENT ON TABLE osmc.tmp_coverage_city IS 'Armazena coberturas geradas pela fun
 DROP TABLE osmc.tmp_gerar;
 CREATE TABLE osmc.tmp_gerar AS
 -- SELECT isolabel_ext, true AS generate FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext LIKE 'BR-%-%' AND isolabel_ext NOT IN (SELECT isolabel_ext FROM osmc.coverage) ORDER BY ST_Area(geom,true)
-SELECT isolabel_ext, true AS generate FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext LIKE 'BR-%-%' ORDER BY ST_Area(geom,true)
+SELECT isolabel_ext, true AS generate FROM optim.vw01full_jurisdiction_geom WHERE isolabel_ext LIKE 'BR-%-%' OR isolabel_ext LIKE 'CO-%-%' ORDER BY ST_Area(geom,true)
 ;
 
 -- COBERTURAS para isolabel_ext em osmc.tmp_gerar
@@ -842,7 +849,7 @@ BEGIN
     FOR r IN EXECUTE format('SELECT isolabel_ext FROM osmc.tmp_gerar WHERE generate IS TRUE;','')
     LOOP
         RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
-        INSERT INTO osmc.tmp_coverage_city SELECT t.isolabel_ext, t.number_cells, t.length_cell, t.cover, s.prefix, s.order_prefix, s.ContainsProperly, s.Intersects, s.UnionContainsProperly FROM osmc.select_cover((r.isolabel_ext)::text,50,p_fraction) t, LATERAL (SELECT (osmc.check_coverage((r.isolabel_ext)::text,t.cover_scientific)).* ) s;
+        INSERT INTO osmc.tmp_coverage_city SELECT (r.isolabel_ext)::text, t.number_cells, t.length_cell, t.cover, s.prefix, s.order_prefix, s.ContainsProperly, s.Intersects, s.UnionContainsProperly FROM osmc.generate_cover((r.isolabel_ext)::text,p_fraction) t, LATERAL (SELECT (osmc.check_coverage((r.isolabel_ext)::text,t.cover_scientific)).* ) s;
         COMMIT;
     END LOOP;
 END;

@@ -433,34 +433,35 @@ COMMENT ON FUNCTION osmc.vbit_withoutL0(varbit,text,int)
 
 CREATE or replace FUNCTION osmc.encode_point_brazil(
   p_geom       geometry(POINT),
-  p_bit_length int DEFAULT 40
+  p_bit_length int DEFAULT 35
 ) RETURNS text AS $wrap$
   SELECT
     (
-      SELECT (natcod.vbit_to_strstd(osmc.extract_L0bits32(cbits,'BR') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,p_bit_length,false),'32nvu'))
+      SELECT (natcod.vbit_to_strstd(osmc.extract_L0bits32(cbits,'BR') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,(p_bit_length/5)*5,false),'32nvu'))
+
       FROM osmc.coverage
       WHERE is_country IS TRUE AND cbits::bit(10) = 76::bit(10) AND ST_Contains(geom,x)
     )
   FROM (SELECT ST_Transform(p_geom,952019)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_point_brazil(geometry(POINT))
-  IS 'Encode Point for Brazil: base 32nvu, 8 digits'
+COMMENT ON FUNCTION osmc.encode_point_brazil(geometry(POINT),int)
+  IS 'Encode Point for Brazil: base 32nvu, default 8 digits'
 ;
 
 CREATE or replace FUNCTION osmc.encode_point_colombia(
   p_geom       geometry(POINT),
-  p_bit_length int DEFAULT 40
+  p_bit_length int DEFAULT 35
 ) RETURNS text AS $wrap$
   SELECT
     (
-      SELECT (natcod.vbit_to_strstd(osmc.extract_L0bits32(cbits,'CO') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,p_bit_length,false),'32nvu'))
+      SELECT (natcod.vbit_to_strstd(osmc.vbit_from_16h_to_vbit_b32nvu(osmc.extract_L0bits(cbits,'CO') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,((p_bit_length-2)/5)*5 +3,false),170),'32nvu'))
       FROM osmc.coverage
       WHERE is_country IS TRUE AND cbits::bit(10) = 170::bit(10) AND ST_Contains(geom,x)
     )
   FROM (SELECT ST_Transform(p_geom,9377)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_point_colombia(geometry(POINT))
-  IS 'Encode Point for Colombia: base 32nvu, 8 digits'
+COMMENT ON FUNCTION osmc.encode_point_colombia(geometry(POINT),int)
+  IS 'Encode Point for Colombia: base 32nvu, default 8 digits'
 ;
 
 CREATE or replace FUNCTION osmc.string_base(
