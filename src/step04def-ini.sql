@@ -445,46 +445,46 @@ CREATE or replace FUNCTION osmc.generate_cover(
         FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction,buffer_type)
         WHERE ggeohash IS NOT NULL
     )
-    SELECT *
-    FROM
-    (
-        -- coverage with 7-digit cells
-        SELECT cardinality(cover) AS number_cells, 7 AS length_cell, cover, cover_scientific
-        FROM
-        (
-            SELECT
-                ARRAY(
-                    SELECT substring(ggeohash,1,7) AS cell
-                    FROM list_ggeohash
-                    GROUP BY 1
-                ) AS cover,
-                ARRAY(
-                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,7)),jurisd_base_id),16)
-                    FROM list_ggeohash
-                    GROUP BY 1
-                ) AS cover_scientific --generate array in scientific base16h
-        ) t7
-
-        UNION ALL
+    -- SELECT *
+    -- FROM
+    -- (
+    --     -- coverage with 7-digit cells
+    --     SELECT cardinality(cover) AS number_cells, 7 AS length_cell, cover, cover_scientific
+    --     FROM
+    --     (
+    --         SELECT
+    --             ARRAY(
+    --                 SELECT substring(ggeohash,1,7) AS cell
+    --                 FROM list_ggeohash
+    --                 GROUP BY 1
+    --             ) AS cover,
+    --             ARRAY(
+    --                 SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,7)),jurisd_base_id),16)
+    --                 FROM list_ggeohash
+    --                 GROUP BY 1
+    --             ) AS cover_scientific --generate array in scientific base16h
+    --     ) t7
+    --
+    --     UNION ALL
 
         -- coverage with 6-digit cells
-        SELECT cardinality(cover) AS number_cells, 6, cover, cover_scientific
-        FROM
-        (
-            SELECT
-                ARRAY(
-                    SELECT substring(ggeohash,1,6) AS cell
-                    FROM list_ggeohash
-                    GROUP BY 1
-                ) AS cover,
-                ARRAY(
-                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,6)),jurisd_base_id),16)
-                    FROM list_ggeohash
-                    GROUP BY 1
-                ) AS cover_scientific --generate array in scientific base16h
-        ) t6
-
-        UNION ALL
+        -- SELECT cardinality(cover) AS number_cells, 6, cover, cover_scientific
+        -- FROM
+        -- (
+        --     SELECT
+        --         ARRAY(
+        --             SELECT substring(ggeohash,1,6) AS cell
+        --             FROM list_ggeohash
+        --             GROUP BY 1
+        --         ) AS cover,
+        --         ARRAY(
+        --             SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,6)),jurisd_base_id),16)
+        --             FROM list_ggeohash
+        --             GROUP BY 1
+        --         ) AS cover_scientific --generate array in scientific base16h
+        -- ) t6
+        --
+        -- UNION ALL
 
         -- coverage with 5-digit cells
         SELECT cardinality(cover) AS number_cells, 5, cover, cover_scientific
@@ -516,7 +516,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     GROUP BY 1
                 ) AS cover,
                 ARRAY(
-                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,5)),jurisd_base_id),16)
+                    SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,4)),jurisd_base_id),16)
                     FROM list_ggeohash
                     GROUP BY 1
                 ) AS cover_scientific --generate array in scientific base16h
@@ -749,6 +749,18 @@ FROM osmc.coverage
 WHERE ST_Area(geom) < 100
 ;
 
+-- DROP VIEW osmc.tmpvwcoverl0;
+CREATE or replace VIEW osmc.tmpvwcoverl0 AS
+  SELECT *, ggeohash.draw_cell_bybox(bbox,false,ST_SRID(geom)) AS geombbox,
+      CASE
+      WHEN isolabel_ext IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh( osmc.extract_L0bits(  cbits,isolabel_ext),16),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(isolabel_ext))::int)
+      ELSE                                  natcod.vbit_to_baseh( osmc.extract_L0bits(  cbits,isolabel_ext),16)
+      END AS code
+  FROM osmc.coverage
+  WHERE is_country IS TRUE
+;
+COMMENT ON VIEW osmc.tmpvwcoverl0 IS '10 maiores e menores coberturas de cada país.';
+
 /*
 EXPLAIN ANALYZE SELECT osmc.cover_child_geometries('0977M,0977J,0977K,0975M,0975L','CO-BOY-Tunja',16);
 
@@ -829,6 +841,136 @@ COMMENT ON COLUMN osmc.tmp_coverage_city.UnionContainsProperly IS 'Verdadeiro se
 
 COMMENT ON TABLE osmc.tmp_coverage_city IS 'Armazena coberturas geradas pela função osmc.select_cover e pelo procedimento osmc.cover_loop.';
 
+DROP TABLE osmc.tmp_coverage_citynew;
+CREATE TABLE osmc.tmp_coverage_citynew AS
+
+SELECT * FROM osmc.tmp_coverage_city WHERE length_cell <> 4
+
+UNION
+
+SELECT *
+FROM
+(
+  SELECT MAX(isolabel_ext) AS isolabel_ext, count(*) AS number_cells,MAX(length_cell) AS length_cell, array_agg(cover) AS cover, array_agg(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(cover),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int),16)) AS prefix, array_agg(order_prefix) AS order_prefix, array_agg(ContainsProperly) AS ContainsProperly, array_agg(Intersects) AS Intersects, MAX(UnionContainsProperly::int)::boolean AS UnionContainsProperly
+  FROM
+  (
+    SELECT isolabel_ext, number_cells, length_cell, unnest(cover) AS cover, unnest(prefix) AS prefix, unnest(order_prefix) AS order_prefix, unnest(ContainsProperly) AS ContainsProperly, unnest(Intersects) AS Intersects, UnionContainsProperly
+    FROM osmc.tmp_coverage_city
+    WHERE /*false = ANY(Intersects) AND*/ length_cell=4
+  ) x
+  WHERE cover IS NOT NULL
+  GROUP BY isolabel_ext
+) y
+;
+
+DROP TABLE osmc.tmp_coverage_citynew2;
+CREATE TABLE osmc.tmp_coverage_citynew2 AS
+
+-- COUNT
+-- COVER TYPE 1: coverage OK
+SELECT *
+FROM osmc.tmp_coverage_citynew
+WHERE NOT (false = ANY(Intersects))
+
+UNION
+
+SELECT *
+FROM
+(
+  SELECT isolabel_ext, count(*) AS number_cells, length_cell, array_agg(cover) AS cover, array_agg(prefix) AS prefix, array_agg(order_prefix) AS order_prefix, array_agg(ContainsProperly) AS ContainsProperly, array_agg(Intersects) AS Intersects, MAX(UnionContainsProperly::int)::boolean AS UnionContainsProperly
+  FROM
+  (
+    SELECT isolabel_ext, number_cells, length_cell, unnest(cover) AS cover, unnest(prefix) AS prefix, unnest(order_prefix) AS order_prefix, unnest(ContainsProperly) AS ContainsProperly, unnest(Intersects) AS Intersects, UnionContainsProperly
+    FROM osmc.tmp_coverage_citynew
+    WHERE false = ANY(Intersects)
+  ) x
+  WHERE Intersects IS TRUE
+  GROUP BY isolabel_ext, length_cell
+) y
+;
+
+-- COUNT
+-- COVER TYPE 1: coverage OK
+SELECT count(*)
+FROM osmc.tmp_coverage_citynew
+WHERE UnionContainsProperly is true AND NOT (false = ANY(Intersects));
+
+-- COVER TYPE 2: complete coverage with non-intercepting cells.
+-- Solution: remove cells that do not intersect
+SELECT count(*)
+FROM osmc.tmp_coverage_citynew
+WHERE UnionContainsProperly is true AND false = ANY(Intersects);
+
+-- COVER TYPE 3: partial coverage.
+-- Possible solution: increase amount of points
+SELECT count(*)
+FROM osmc.tmp_coverage_citynew
+WHERE (UnionContainsProperly is false) AND NOT (false = ANY(Intersects));
+
+-- COVER TYPE 4: partial coverage with non-intercepting cells.
+-- Possible solution: increase amount of points and remove cells that do not intersect
+SELECT count(*)
+FROM osmc.tmp_coverage_citynew
+WHERE UnionContainsProperly is false AND false = ANY(Intersects);
+
+
+SELECT split_part(isolabel_ext,'-',1) AS country, length_cell, count(*)
+FROM
+(
+  SELECT isolabel_ext, MAX(length_cell) AS length_cell
+  FROM osmc.tmp_coverage_citynew2
+  WHERE number_cells <32
+  GROUP BY isolabel_ext
+)f
+-- WHERE length_cell=5
+GROUP BY split_part(isolabel_ext,'-',1), length_cell
+ORDER BY 1,2
+;
+
+
+SELECT isolabel_ext, length_cell, number_cells, UnionContainsProperly
+FROM
+(
+  SELECT isolabel_ext, length_cell, number_cells, UnionContainsProperly
+  FROM osmc.tmp_coverage_citynew2
+  WHERE number_cells <32
+)f
+-- WHERE length_cell=5
+ORDER BY split_part(isolabel_ext,'-',1),2
+;
+
+
+
+-- número de municípios com cobertura-base com células de 5.7km de lado:
+SELECT COUNT (*)
+FROM
+(
+    SELECT *
+    FROM osmc.tmp_coverage_citynew2
+) a
+WHERE length_cell > 3;
+-- count   2551
+
+-- percentil 75 , 90 :
+SELECT percentile_cont(0.75) within group (order by number_cells asc) as percentile_75,
+       percentile_cont(0.90) within group (order by number_cells asc) as percentile_90
+FROM
+(
+    SELECT *
+    FROM osmc.tmp_coverage_citynew2
+    WHERE unioncontainsproperly IS TRUE
+) a
+WHERE length_cell = 4 order by 1;
+
+
+
+
+
+
+
+
+
+
 
 -- Tabela para armazenar os isolabel_ext que terão cobertura gerada
 DROP TABLE osmc.tmp_gerar;
@@ -874,25 +1016,25 @@ WHERE gid=1 AND UnionContainsProperly is FALSE
 -- COUNT
 -- COVER TYPE 1: coverage OK
 SELECT count(*)
-FROM osmc.tmp_coverageselected
+FROM osmc.tmp_coverage_city
 WHERE UnionContainsProperly is true AND NOT (false = ANY(Intersects));
 
 -- COVER TYPE 2: complete coverage with non-intercepting cells.
 -- Solution: remove cells that do not intersect
 SELECT count(*)
-FROM osmc.tmp_coverageselected
+FROM osmc.tmp_coverage_city
 WHERE UnionContainsProperly is true AND false = ANY(Intersects);
 
 -- COVER TYPE 3: partial coverage.
 -- Possible solution: increase amount of points
 SELECT count(*)
-FROM osmc.tmp_coverageselected
+FROM osmc.tmp_coverage_city
 WHERE (UnionContainsProperly is false) AND NOT (false = ANY(Intersects));
 
 -- COVER TYPE 4: partial coverage with non-intercepting cells.
 -- Possible solution: increase amount of points and remove cells that do not intersect
 SELECT count(*)
-FROM osmc.tmp_coverageselected
+FROM osmc.tmp_coverage_city
 WHERE UnionContainsProperly is false AND false = ANY(Intersects);
 
 -- ADD
