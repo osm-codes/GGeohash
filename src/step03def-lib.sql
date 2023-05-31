@@ -784,7 +784,7 @@ CREATE or replace FUNCTION osmc.encode_postal_co(
     SELECT osmc.encode_postal(p_geom,
       CASE
       WHEN p_uncertainty > -1 THEN ((x-2)/5)*5 +3
-      ELSE 35
+      ELSE 33 -- 30 shift 3, 5.7m, L16.5
       END,
       9377,
       CASE
