@@ -975,6 +975,29 @@ FROM
 ;
 COMMENT ON TABLE osmc.tmp_coverage_citynew3 IS 'Remove células que não interceptam e com areas <= 100 metros quadrados.';
 
+DROP TABLE osmc.tmp_coverage_citynew4;
+CREATE TABLE osmc.tmp_coverage_citynew4 AS
+SELECT j.*, k.ggeohash AS point_overlay, substring(k.ggeohash,1,5) AS overlay,
+          CASE
+            WHEN k.ggeohash IS NOT NULL THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(k.ggeohash,1,5)),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(j.isolabel_ext,'-',1)))::int),16)
+            ELSE null
+          END AS overlay_sci
+FROM osmc.tmp_coverage_citynew3 j
+LEFT JOIN
+(
+    SELECT isolabel_ext, osm_id,
+          CASE split_part(isolabel_ext,'-',1)
+            WHEN 'BR' THEN osmc.encode_point_brazil(geom)
+            WHEN 'CO' THEN osmc.encode_point_colombia(geom)
+          END AS ggeohash
+    FROM
+    (
+        SELECT isolabel_ext, osm_id, ST_Transform(g.geom,((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int)) AS geom
+        FROM optim.jurisdiction_geom_point g
+    ) r
+) k
+ON j.isolabel_ext = k.isolabel_ext
+;
 
 -- COUNT
 -- COVER TYPE 1: coverage OK
@@ -1032,7 +1055,7 @@ FROM
 (
   -- seleciona cobertura com células de mais digitos
   SELECT isolabel_ext, MAX(length_cell) AS length_cell
-  FROM osmc.tmp_coverage_citynew3
+  FROM osmc.tmp_coverage_citynew4
   WHERE number_cells < 31 -- 2 sobras
   GROUP BY isolabel_ext
 )f
@@ -1053,7 +1076,7 @@ FROM
 (
   -- seleciona cobertura com células de mais digitos
   SELECT isolabel_ext, MAX(length_cell) AS length_cell
-  FROM osmc.tmp_coverage_citynew3
+  FROM osmc.tmp_coverage_citynew4
   WHERE flag_poeira IS TRUE AND number_cells < 31 -- 2 sobras
   GROUP BY isolabel_ext
 )f
