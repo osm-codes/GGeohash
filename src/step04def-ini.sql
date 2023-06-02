@@ -308,16 +308,17 @@ COMMENT ON FUNCTION osmc.generate_cover_csv(text,text)
 CREATE or replace FUNCTION osmc.check_coverage(
   p_isolabel_ext text,
   p_cover     text[] -- 16h
-) RETURNS TABLE(isolabel_ext text, prefix text[], order_prefix int[], ContainsProperly boolean[], Intersects boolean[], UnionContainsProperly boolean) AS $f$
+) RETURNS TABLE(isolabel_ext text, prefix text[], order_prefix int[], ContainsProperly boolean[], Intersects boolean[], UnionContainsProperly boolean, AreaIntersection float[]) AS $f$
 
-SELECT p_isolabel_ext, prefix, order_prefix, ContainsProperly, Intersects, ST_ContainsProperly(geomunion,z.geom_transformed) AS UnionContainsProperly
+SELECT p_isolabel_ext, prefix, order_prefix, ContainsProperly, Intersects, ST_ContainsProperly(geomunion,z.geom_transformed) AS UnionContainsProperly, AreaIntersection
 FROM
 (
   SELECT array_agg(prefix) AS prefix, array_agg(order_prefix) AS order_prefix,
     array_agg(ST_ContainsProperly(r.geom_transformed,geom)) AS ContainsProperly,
     array_agg(ST_Intersects(r.geom_transformed,geom)) AS Intersects,
     MAX(srid) AS srid,
-    ST_Union(x.geom) AS geomunion
+    ST_Union(x.geom) AS geomunion,
+    array_agg(ST_Area(ST_Intersection(r.geom_transformed,geom))) AS AreaIntersection
   FROM
   (
     SELECT
@@ -373,7 +374,7 @@ $f$ LANGUAGE SQL;
 COMMENT ON FUNCTION osmc.check_coverage(text,text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
--- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347k,c347n,c347p,c347s,c347t,c347y,c347z,c34dn,c34dp,c34dy,c34dz,c352k,c352s,c352t,c352y,c352z,c358j,c358k,c358n,c358p,c358s,c358t,c358y,c358z,c359s,c359t,c35an,c35bj}'::text[]);
+-- SELECT osmc.check_coverage('BR-AL-OuroBranco','{077c4j,0776az,077c1z,0776bz,077c1s,077c0n,0776ay,0776by,077c4s,077c1n,0776bt,077c1k}'::text[]);
 
 ------------------
 -- generate coverage :
@@ -445,47 +446,9 @@ CREATE or replace FUNCTION osmc.generate_cover(
         FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction,buffer_type)
         WHERE ggeohash IS NOT NULL
     )
-    -- SELECT *
-    -- FROM
-    -- (
-    --     -- coverage with 7-digit cells
-    --     SELECT cardinality(cover) AS number_cells, 7 AS length_cell, cover, cover_scientific
-    --     FROM
-    --     (
-    --         SELECT
-    --             ARRAY(
-    --                 SELECT substring(ggeohash,1,7) AS cell
-    --                 FROM list_ggeohash
-    --                 GROUP BY 1
-    --             ) AS cover,
-    --             ARRAY(
-    --                 SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,7)),jurisd_base_id),16)
-    --                 FROM list_ggeohash
-    --                 GROUP BY 1
-    --             ) AS cover_scientific --generate array in scientific base16h
-    --     ) t7
-    --
-    --     UNION ALL
-
-        -- coverage with 6-digit cells
-        -- SELECT cardinality(cover) AS number_cells, 6, cover, cover_scientific
-        -- FROM
-        -- (
-        --     SELECT
-        --         ARRAY(
-        --             SELECT substring(ggeohash,1,6) AS cell
-        --             FROM list_ggeohash
-        --             GROUP BY 1
-        --         ) AS cover,
-        --         ARRAY(
-        --             SELECT natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,6)),jurisd_base_id),16)
-        --             FROM list_ggeohash
-        --             GROUP BY 1
-        --         ) AS cover_scientific --generate array in scientific base16h
-        -- ) t6
-        --
-        -- UNION ALL
-
+    SELECT *
+    FROM
+    (
         -- coverage with 5-digit cells
         SELECT cardinality(cover) AS number_cells, 5, cover, cover_scientific
         FROM
@@ -827,7 +790,8 @@ CREATE TABLE osmc.tmp_coverage_city (
   order_prefix int[],
   ContainsProperly boolean[],
   Intersects boolean[],
-  UnionContainsProperly boolean
+  UnionContainsProperly boolean,
+  AreaIntersection float[]
 );
 COMMENT ON COLUMN osmc.tmp_coverage_city.isolabel_ext          IS 'ISO 3166-1 alpha-2 code and name (camel case); e.g. BR-SP-SaoPaulo.';
 COMMENT ON COLUMN osmc.tmp_coverage_city.number_cells          IS 'Número de células na cobertura';
@@ -838,139 +802,8 @@ COMMENT ON COLUMN osmc.tmp_coverage_city.order_prefix          IS 'Posição dos
 COMMENT ON COLUMN osmc.tmp_coverage_city.ContainsProperly      IS 'Verdadeiro se prefixo está contido na jurisdição.';
 COMMENT ON COLUMN osmc.tmp_coverage_city.Intersects            IS 'Verdadeiro se prefixo intercepta a jurisdição.';
 COMMENT ON COLUMN osmc.tmp_coverage_city.UnionContainsProperly IS 'Verdadeiro se a união dos prefixos contém a jurisdição.';
-
+COMMENT ON COLUMN osmc.tmp_coverage_city.AreaIntersection      IS 'Area da intersceção da célula com a jurisdição.';
 COMMENT ON TABLE osmc.tmp_coverage_city IS 'Armazena coberturas geradas pela função osmc.select_cover e pelo procedimento osmc.cover_loop.';
-
-DROP TABLE osmc.tmp_coverage_citynew;
-CREATE TABLE osmc.tmp_coverage_citynew AS
-
-SELECT * FROM osmc.tmp_coverage_city WHERE length_cell <> 4
-
-UNION
-
-SELECT *
-FROM
-(
-  SELECT MAX(isolabel_ext) AS isolabel_ext, count(*) AS number_cells,MAX(length_cell) AS length_cell, array_agg(cover) AS cover, array_agg(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(cover),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int),16)) AS prefix, array_agg(order_prefix) AS order_prefix, array_agg(ContainsProperly) AS ContainsProperly, array_agg(Intersects) AS Intersects, MAX(UnionContainsProperly::int)::boolean AS UnionContainsProperly
-  FROM
-  (
-    SELECT isolabel_ext, number_cells, length_cell, unnest(cover) AS cover, unnest(prefix) AS prefix, unnest(order_prefix) AS order_prefix, unnest(ContainsProperly) AS ContainsProperly, unnest(Intersects) AS Intersects, UnionContainsProperly
-    FROM osmc.tmp_coverage_city
-    WHERE /*false = ANY(Intersects) AND*/ length_cell=4
-  ) x
-  WHERE cover IS NOT NULL
-  GROUP BY isolabel_ext
-) y
-;
-
-DROP TABLE osmc.tmp_coverage_citynew2;
-CREATE TABLE osmc.tmp_coverage_citynew2 AS
-
--- COUNT
--- COVER TYPE 1: coverage OK
-SELECT *
-FROM osmc.tmp_coverage_citynew
-WHERE NOT (false = ANY(Intersects))
-
-UNION
-
-SELECT *
-FROM
-(
-  SELECT isolabel_ext, count(*) AS number_cells, length_cell, array_agg(cover) AS cover, array_agg(prefix) AS prefix, array_agg(order_prefix) AS order_prefix, array_agg(ContainsProperly) AS ContainsProperly, array_agg(Intersects) AS Intersects, MAX(UnionContainsProperly::int)::boolean AS UnionContainsProperly
-  FROM
-  (
-    SELECT isolabel_ext, number_cells, length_cell, unnest(cover) AS cover, unnest(prefix) AS prefix, unnest(order_prefix) AS order_prefix, unnest(ContainsProperly) AS ContainsProperly, unnest(Intersects) AS Intersects, UnionContainsProperly
-    FROM osmc.tmp_coverage_citynew
-    WHERE false = ANY(Intersects)
-  ) x
-  WHERE Intersects IS TRUE
-  GROUP BY isolabel_ext, length_cell
-) y
-;
-
--- COUNT
--- COVER TYPE 1: coverage OK
-SELECT count(*)
-FROM osmc.tmp_coverage_citynew
-WHERE UnionContainsProperly is true AND NOT (false = ANY(Intersects));
-
--- COVER TYPE 2: complete coverage with non-intercepting cells.
--- Solution: remove cells that do not intersect
-SELECT count(*)
-FROM osmc.tmp_coverage_citynew
-WHERE UnionContainsProperly is true AND false = ANY(Intersects);
-
--- COVER TYPE 3: partial coverage.
--- Possible solution: increase amount of points
-SELECT count(*)
-FROM osmc.tmp_coverage_citynew
-WHERE (UnionContainsProperly is false) AND NOT (false = ANY(Intersects));
-
--- COVER TYPE 4: partial coverage with non-intercepting cells.
--- Possible solution: increase amount of points and remove cells that do not intersect
-SELECT count(*)
-FROM osmc.tmp_coverage_citynew
-WHERE UnionContainsProperly is false AND false = ANY(Intersects);
-
-
-SELECT split_part(isolabel_ext,'-',1) AS country, length_cell, count(*)
-FROM
-(
-  SELECT isolabel_ext, MAX(length_cell) AS length_cell
-  FROM osmc.tmp_coverage_citynew2
-  WHERE number_cells <32
-  GROUP BY isolabel_ext
-)f
--- WHERE length_cell=5
-GROUP BY split_part(isolabel_ext,'-',1), length_cell
-ORDER BY 1,2
-;
-
-
-SELECT isolabel_ext, length_cell, number_cells, UnionContainsProperly
-FROM
-(
-  SELECT isolabel_ext, length_cell, number_cells, UnionContainsProperly
-  FROM osmc.tmp_coverage_citynew2
-  WHERE number_cells <32
-)f
--- WHERE length_cell=5
-ORDER BY split_part(isolabel_ext,'-',1),2
-;
-
-
-
--- número de municípios com cobertura-base com células de 5.7km de lado:
-SELECT COUNT (*)
-FROM
-(
-    SELECT *
-    FROM osmc.tmp_coverage_citynew2
-) a
-WHERE length_cell > 3;
--- count   2551
-
--- percentil 75 , 90 :
-SELECT percentile_cont(0.75) within group (order by number_cells asc) as percentile_75,
-       percentile_cont(0.90) within group (order by number_cells asc) as percentile_90
-FROM
-(
-    SELECT *
-    FROM osmc.tmp_coverage_citynew2
-    WHERE unioncontainsproperly IS TRUE
-) a
-WHERE length_cell = 4 order by 1;
-
-
-
-
-
-
-
-
-
-
 
 -- Tabela para armazenar os isolabel_ext que terão cobertura gerada
 DROP TABLE osmc.tmp_gerar;
@@ -991,7 +824,7 @@ BEGIN
     FOR r IN EXECUTE format('SELECT isolabel_ext FROM osmc.tmp_gerar WHERE generate IS TRUE;','')
     LOOP
         RAISE NOTICE 'Gerando cobertura de: %', r.isolabel_ext;
-        INSERT INTO osmc.tmp_coverage_city SELECT (r.isolabel_ext)::text, t.number_cells, t.length_cell, t.cover, s.prefix, s.order_prefix, s.ContainsProperly, s.Intersects, s.UnionContainsProperly FROM osmc.generate_cover((r.isolabel_ext)::text,p_fraction) t, LATERAL (SELECT (osmc.check_coverage((r.isolabel_ext)::text,t.cover_scientific)).* ) s;
+        INSERT INTO osmc.tmp_coverage_city SELECT (r.isolabel_ext)::text, t.number_cells, t.length_cell, t.cover, s.prefix, s.order_prefix, s.ContainsProperly, s.Intersects, s.UnionContainsProperly, s.AreaIntersection FROM osmc.generate_cover((r.isolabel_ext)::text,p_fraction) t, LATERAL (SELECT (osmc.check_coverage((r.isolabel_ext)::text,t.cover_scientific)).* ) s;
         COMMIT;
     END LOOP;
 END;
@@ -1086,5 +919,164 @@ FROM
 WHERE unioncontainsproperly is false or false = ANY(intersects);
 
 SELECT osmc.update_coverage_isolevel3('CO-AMA-ElEncanto',0::smallint,'{89q,8bg,8cg,8cq,8dq,8eg,8dg}'::text[],'{}'::text[]);
+
+*/
+
+/*
+DROP TABLE osmc.tmp_coverage_citynew;
+CREATE TABLE osmc.tmp_coverage_citynew AS
+SELECT * FROM osmc.tmp_coverage_city WHERE length_cell <> 4
+UNION
+SELECT *
+FROM
+(
+  SELECT MAX(isolabel_ext) AS isolabel_ext, count(*) AS number_cells,MAX(length_cell) AS length_cell, array_agg(cover) AS cover, array_agg(natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(cover),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int),16)) AS prefix, array_agg(order_prefix) AS order_prefix, array_agg(ContainsProperly) AS ContainsProperly, array_agg(Intersects) AS Intersects, MAX(UnionContainsProperly::int)::boolean AS UnionContainsProperly
+  FROM
+  (
+    SELECT isolabel_ext, number_cells, length_cell, unnest(cover) AS cover, unnest(prefix) AS prefix, unnest(order_prefix) AS order_prefix, unnest(ContainsProperly) AS ContainsProperly, unnest(Intersects) AS Intersects, UnionContainsProperly
+    FROM osmc.tmp_coverage_city
+    WHERE /*false = ANY(Intersects) AND*/ length_cell=4
+  ) x
+  WHERE cover IS NOT NULL
+  GROUP BY isolabel_ext
+) y
+;
+COMMENT ON TABLE osmc.tmp_coverage_citynew IS 'Aplica correção em coberturas length_cell=4.';
+
+DROP TABLE osmc.tmp_coverage_citynew2;
+CREATE TABLE osmc.tmp_coverage_citynew2 AS
+SELECT r.isolabel_ext, r.number_cells, r.length_cell, r.cover, s.prefix, s.order_prefix, s.containsproperly, s.intersects, s.unioncontainsproperly, s.areaintersection
+FROM osmc.tmp_coverage_citynew r, LATERAL ( SELECT * FROM osmc.check_coverage(isolabel_ext,prefix) ) s
+;
+COMMENT ON TABLE osmc.tmp_coverage_citynew2 IS 'Reaplica check_coverage em todas as coberturas.';
+
+DROP TABLE osmc.tmp_coverage_citynew3;
+CREATE TABLE osmc.tmp_coverage_citynew3 AS
+SELECT *
+FROM
+(
+  SELECT isolabel_ext, count(*) AS number_cells, length_cell, array_agg(cover) AS cover, array_agg(prefix) AS prefix, array_agg(order_prefix) AS order_prefix, array_agg(ContainsProperly) AS ContainsProperly, array_agg(Intersects) AS Intersects, MAX(UnionContainsProperly::int)::boolean AS UnionContainsProperly, MAX(flag_p::int)::boolean AS flag_poeira
+  FROM
+  (
+    SELECT *, MAX(flag_poeira::int) OVER (PARTITION BY isolabel_ext, length_cell) AS flag_p
+    FROM
+    (
+      SELECT *, CASE WHEN areaintersection <= 100 AND areaintersection > 0 THEN TRUE ELSE FALSE END AS flag_poeira
+      FROM
+      (
+        SELECT isolabel_ext, number_cells, length_cell, unnest(cover) AS cover, unnest(prefix) AS prefix, unnest(order_prefix) AS order_prefix, unnest(ContainsProperly) AS ContainsProperly, unnest(Intersects) AS Intersects, UnionContainsProperly, unnest(areaintersection) AS areaintersection
+        FROM osmc.tmp_coverage_citynew2
+      ) x
+    ) f
+  ) y
+  WHERE Intersects IS TRUE AND areaintersection > 100
+  GROUP BY isolabel_ext, length_cell
+) z
+;
+COMMENT ON TABLE osmc.tmp_coverage_citynew3 IS 'Remove células que não interceptam e com areas <= 100 metros quadrados.';
+
+
+-- COUNT
+-- COVER TYPE 1: coverage OK
+SELECT count(*)
+FROM osmc.tmp_coverage_citynew3
+WHERE UnionContainsProperly is true AND NOT (false = ANY(Intersects));
+
+-- COVER TYPE 2: complete coverage with non-intercepting cells.
+-- Solution: remove cells that do not intersect
+SELECT count(*)
+FROM osmc.tmp_coverage_citynew3
+WHERE UnionContainsProperly is true AND false = ANY(Intersects);
+
+-- COVER TYPE 3: partial coverage.
+-- Possible solution: increase amount of points
+SELECT count(*)
+FROM osmc.tmp_coverage_citynew3
+WHERE (UnionContainsProperly is false) AND NOT (false = ANY(Intersects));
+
+-- COVER TYPE 4: partial coverage with non-intercepting cells.
+-- Possible solution: increase amount of points and remove cells that do not intersect
+SELECT count(*)
+FROM osmc.tmp_coverage_citynew3
+WHERE UnionContainsProperly is false AND false = ANY(Intersects);
+
+
+SELECT split_part(isolabel_ext,'-',1) AS country, length_cell, count(*)
+FROM
+(
+  -- seleciona cobertura com células de mais digitos
+  SELECT isolabel_ext, MAX(length_cell) AS length_cell
+  FROM osmc.tmp_coverage_citynew3
+  WHERE number_cells < 31 -- 2 sobras
+  GROUP BY isolabel_ext
+)f
+GROUP BY split_part(isolabel_ext,'-',1), length_cell
+ORDER BY 1,2
+;
+
+ country | length_cell | count
+---------+-------------+-------
+ BR      |           2 |    67
+ BR      |           3 |  2255
+ BR      |           4 |  3244
+ BR      |           5 |     4
+ CO      |           2 |     5
+ CO      |           3 |   350
+ CO      |           4 |   760
+ CO      |           5 |     1
+(8 rows)
+
+
+SELECT length_cell, count(*)
+FROM
+(
+  -- seleciona cobertura com células de mais digitos
+  SELECT isolabel_ext, MAX(length_cell) AS length_cell
+  FROM osmc.tmp_coverage_citynew3
+  WHERE number_cells < 31 -- 2 sobras
+  GROUP BY isolabel_ext
+)f
+GROUP BY length_cell
+ORDER BY 1
+;
+
+ length_cell | count
+-------------+-------
+           2 |    72
+           3 |  2605
+           4 |  4004
+           5 |     5
+(4 rows)
+
+SELECT count(*)
+FROM
+(
+  -- seleciona cobertura com células de mais digitos
+  SELECT isolabel_ext, MAX(length_cell) AS length_cell
+  FROM osmc.tmp_coverage_citynew3
+  WHERE flag_poeira IS TRUE AND number_cells < 31 -- 2 sobras
+  GROUP BY isolabel_ext
+)f
+;
+ count
+-------
+    87
+(1 row)
+
+
+SELECT count(*)
+FROM
+(
+  -- seleciona cobertura com células de mais digitos
+  SELECT isolabel_ext, MAX(length_cell) AS length_cell
+  FROM osmc.tmp_coverage_citynew3
+  WHERE unioncontainsproperly IS false AND number_cells < 31 -- 2 sobras
+  GROUP BY isolabel_ext
+)f
+;
+ count
+-------
+     7
+(1 row)
 
 */
