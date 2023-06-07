@@ -207,9 +207,6 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
 -- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359q,c35ag,c35bg}'::text[],'{c3581r,c3581v,c3583h,c3583m,c3583r,c3583v,c3589h,c3589m,c3589v,c358ch,c358cr}'::text[]);
--- SELECT osmc.update_coverage_isolevel3('CO-DC-Bogota',0::smallint,'{9ad,9af,9ba,c10,c12,c18}'::text[],'{}'::text[]);
--- SELECT osmc.update_coverage_isolevel3('CO-ANT-Medellin',0::smallint,'{67d9q,67dag,67daq,67dbg,67dbq,67deg,67deq,67dfg,67dfq,67f0g,67f0q,67f1g,67f1q,67f2g,67f2q,67f3g,67f3q,67f4g,67f4q,67f5g,67f5q,67f6g}'::text[],'{}'::text[]);
--- SELECT osmc.check_coverage('CO-BOY-Tunja','{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359q,c35ag,c35bg}'::text[]);
 
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
   p_isolabel_ext text,
@@ -977,9 +974,20 @@ COMMENT ON TABLE osmc.tmp_coverage_citynew3 IS 'Remove células que não interce
 
 DROP TABLE osmc.tmp_coverage_citynew4;
 CREATE TABLE osmc.tmp_coverage_citynew4 AS
-SELECT j.*, k.ggeohash AS point_overlay, substring(k.ggeohash,1,5) AS overlay,
+SELECT j.*, k.ggeohash AS point_overlay,
           CASE
-            WHEN k.ggeohash IS NOT NULL THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(k.ggeohash,1,5)),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(j.isolabel_ext,'-',1)))::int),16)
+            WHEN length_cell = 5 THEN substring(k.ggeohash,1,6)
+            WHEN length_cell = 4 THEN substring(k.ggeohash,1,5)
+            WHEN length_cell = 3 THEN substring(k.ggeohash,1,4)
+            WHEN length_cell = 2 THEN substring(k.ggeohash,1,4)
+            ELSE substring(k.ggeohash,1,5)
+          END AS overlay,
+
+          CASE
+            WHEN k.ggeohash IS NOT NULL AND length_cell = 5 THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(k.ggeohash,1,6)),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(j.isolabel_ext,'-',1)))::int),16)
+            WHEN k.ggeohash IS NOT NULL AND length_cell = 4 THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(k.ggeohash,1,5)),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(j.isolabel_ext,'-',1)))::int),16)
+            WHEN k.ggeohash IS NOT NULL AND length_cell = 3 THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(k.ggeohash,1,4)),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(j.isolabel_ext,'-',1)))::int),16)
+            WHEN k.ggeohash IS NOT NULL AND length_cell = 2 THEN natcod.vbit_to_baseh(osmc.vbit_from_b32nvu_to_vbit_16h(natcod.b32nvu_to_vbit(substring(k.ggeohash,1,4)),(('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(j.isolabel_ext,'-',1)))::int),16)
             ELSE null
           END AS overlay_sci
 FROM osmc.tmp_coverage_citynew3 j
@@ -1101,5 +1109,181 @@ FROM
 -------
      7
 (1 row)
+
+-- percentil 25, 50, 75 , 90, 95, 100 :
+SELECT percentile_cont(0.25) within group (order by number_cells asc) as percentile_25,
+       percentile_cont(0.50) within group (order by number_cells asc) as percentile_50,
+       percentile_cont(0.75) within group (order by number_cells asc) as percentile_75,
+       percentile_cont(0.90) within group (order by number_cells asc) as percentile_90,
+       percentile_cont(0.95) within group (order by number_cells asc) as percentile_95,
+       percentile_cont(   1) within group (order by number_cells asc) as percentile_100
+FROM
+(
+  SELECT a.*
+  FROM osmc.tmp_coverage_citynew4 a
+  INNER JOIN
+  (
+    -- seleciona cobertura com células de mais digitos
+    SELECT isolabel_ext, MAX(length_cell) AS length_cell
+    FROM osmc.tmp_coverage_citynew4
+    WHERE number_cells < 31 -- 2 sobras
+    GROUP BY isolabel_ext
+  ) b
+  ON a.isolabel_ext = b.isolabel_ext AND a.length_cell = b.length_cell
+) c
+order by 1;
+ percentile_25 | percentile_50 | percentile_75 | percentile_90 | percentile_95 | percentile_100
+---------------+---------------+---------------+---------------+---------------+----------------
+             6 |            11 |            18 |            25 |            27 |             30
+(1 row)
+
+SELECT osmc.update_coverage_isolevel3(isolabel_ext,0::smallint,prefix,overlay_sci)
+FROM
+(
+  SELECT a.isolabel_ext, a.prefix, ARRAY[a.overlay_sci] AS overlay_sci
+  FROM osmc.tmp_coverage_citynew4 a
+  INNER JOIN
+  (
+    -- seleciona cobertura com células de mais digitos
+    SELECT isolabel_ext, MAX(length_cell) AS length_cell
+    FROM osmc.tmp_coverage_citynew4
+    WHERE number_cells < 31 -- 2 sobras
+    GROUP BY isolabel_ext
+  ) b
+  ON a.isolabel_ext = b.isolabel_ext AND a.length_cell = b.length_cell
+  WHERE a.isolabel_ext NOT IN ('BR-PA-Altamira','BR-SP-RioClaro','BR-SP-SaoCarlos','BR-SP-SaoPaulo','BR-SP-MogiCruzes','BR-SP-Campinas','BR-RJ-RioJaneiro','CO-BOY-Tunja')
+) z
+;
+*/
+
+
+/*
+DROP VIEW public.teste3;
+CREATE VIEW public.teste3 AS
+
+SELECT ROW_NUMBER() OVER (ORDER BY semente DESC, ST_Area(geom_intersc1) DESC, ST_Area(geom_intersc3) DESC) AS id, semente, ggeom AS geom, ST_Area(geom_intersc1) AS area1, ST_Area(geom_intersc3) AS area2
+
+FROM
+(
+  SELECT u.ghs, prefix, x.*, u.geom AS ggeom,
+
+  CASE WHEN u.ghs = overlay_sci THEN TRUE ELSE FALSE END AS semente,
+
+
+
+      ST_Intersection(u.geom,(SELECT ST_Union(t.geom)
+  FROM ibge.setores_union t
+  WHERE cd_mun=jurisd_local_id::text AND CD_SIT::int =1))
+      AS geom_intersc1,
+
+      ST_Intersection(u.geom,(SELECT ST_Union(t.geom)
+  FROM ibge.setores_union t
+  WHERE cd_mun=jurisd_local_id::text AND CD_SIT::int =3))
+      AS geom_intersc3
+
+
+  FROM
+  (
+      SELECT jurisd_local_id, b.*,
+      -- ST_Intersection(c.geom_transformed,ggeohash.draw_cell_bybox(bbox,false,b.srid)) AS geom,
+      ggeohash.draw_cell_bybox(bbox,false,b.srid) AS geom,
+      natcod.vbit_to_strstd( osmc.vbit_from_16h_to_vbit_b32nvu(prefix_bits,jurisd_base_id),'32nvu') AS kx_prefix,
+      bbox, bbox2
+      FROM
+      (
+        SELECT a.*,
+              ((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int) AS srid,
+              ((('{"CO":170, "BR":76, "UY":858}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int) AS jurisd_base_id,
+              natcod.baseh_to_vbit(prefix,16) AS prefix_bits,
+              split_part(isolabel_ext,'-',1) AS isocountry
+        FROM
+        (
+          SELECT a.isolabel_ext, number_cells, a.length_cell, unnest(cover) AS cover, unnest(prefix) AS prefix, unnest(order_prefix) AS order_prefix, unnest(containsproperly) AS containsproperly, unnest(intersects) AS intersects, unioncontainsproperly, flag_poeira, point_overlay, overlay, overlay_sci
+          FROM osmc.tmp_coverage_citynew4 a
+          INNER JOIN
+          (
+            -- seleciona cobertura com células de mais digitos
+            SELECT isolabel_ext, MAX(length_cell) AS length_cell
+            FROM osmc.tmp_coverage_citynew4
+            WHERE number_cells < 31 -- 2 sobras
+            GROUP BY isolabel_ext
+          ) b
+          ON a.isolabel_ext = b.isolabel_ext AND a.length_cell = b.length_cell
+          WHERE a.isolabel_ext ='BR-RS-Itaara'
+        ) a
+      ) b
+      -- bbox prefix
+      LEFT JOIN LATERAL
+      (
+        SELECT (CASE WHEN length(b.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(b.prefix_bits,b.isocountry,16),bbox) ELSE bbox END) AS bbox, bbox AS bbox2
+        FROM osmc.coverage
+        WHERE isolabel_ext = b.isocountry AND is_country IS TRUE
+            AND (
+                  CASE
+                  WHEN b.isocountry = 'CO' THEN ( ( osmc.extract_L0bits(cbits,'CO')   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+                  ELSE                    ( ( osmc.extract_L0bits(cbits,b.isocountry) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+                  END
+            )
+      ) s
+      ON TRUE
+
+      -- geom jurisdiction
+      LEFT JOIN LATERAL
+      (
+        SELECT isolabel_ext, jurisd_local_id
+        FROM optim.vw01full_jurisdiction_geom g
+      ) c
+      ON c.isolabel_ext = b.isolabel_ext
+  ) x,
+  LATERAL
+  (
+    SELECT natcod.vbit_to_baseh(prefix_bits || x,16) AS ghs,
+          ggeohash.draw_cell_bybox(ggeohash.decode_box2(osmc.vbit_withoutL0(prefix_bits,isocountry,16) || x,bbox2,false),false,srid) AS geom
+    FROM
+    unnest('{00000,00001,00010,00011,00100,00101,00110,00111,01000,01001,01010,01011,01100,01101,01110,01111,10000,10001,10010,10011,10100,10101,10110,10111,11000,11001,11010,11011,11100,11101,11110,11111}'::varbit[]) t(x)
+  ) u
+
+  WHERE ST_Intersects(x.geom,(SELECT ST_Union(t.geom)
+  FROM ibge.setores_union t
+  WHERE cd_mun=jurisd_local_id::text AND CD_SIT::int < 4))
+
+  AND
+
+  ST_Intersects(u.geom,(SELECT ST_Union(t.geom)
+  FROM ibge.setores_union t
+  WHERE cd_mun=jurisd_local_id::text AND CD_SIT::int < 4))
+) xx
+;
+
+
+
+
+DROP view public.test2;
+create view public.test2 AS
+SELECT ROW_NUMBER() OVER () AS id, ST_Union(t.geom) as geom
+FROM ibge.setores_union t
+WHERE cd_mun='4316907' AND CD_SIT::int < 4;
+
+
+
+
+
+CREATE TABLE ibge.setores_union AS
+
+SELECT MIN(gid) AS gid, MIN(cd_sit) AS cd_sit, MIN(cd_mun) AS cd_mun, ST_Union(t.geom) as geom
+FROM ibge.setores t
+WHERE CD_SIT::int < 3
+GROUP BY (cd_mun)
+
+UNION
+
+SELECT MIN(gid) AS gid, MIN(cd_sit) AS cd_sit, MIN(cd_mun) AS cd_mun, ST_Union(t.geom) as geom
+FROM ibge.setores t
+WHERE CD_SIT::int = 3
+GROUP BY (cd_mun)
+;
+
+
+gid,cd_setor,cd_sit,nm_sit,cd_uf,nm_uf,sigla_uf,cd_mun,nm_mun,cd_dist,nm_dist,cd_subdist,nm_subdist
 
 */
