@@ -1006,6 +1006,7 @@ LEFT JOIN
 ) k
 ON j.isolabel_ext = k.isolabel_ext
 ;
+COMMENT ON TABLE osmc.tmp_coverage_citynew4 IS 'Gera uma célula overlay para cada cobertura utilizando como semente ponto da wikidata.';
 
 -- COUNT
 -- COVER TYPE 1: coverage OK
@@ -1137,6 +1138,7 @@ order by 1;
              6 |            11 |            18 |            25 |            27 |             30
 (1 row)
 
+-- Atualiza coberturas
 SELECT osmc.update_coverage_isolevel3(isolabel_ext,0::smallint,prefix,overlay_sci)
 FROM
 (
