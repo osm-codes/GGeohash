@@ -975,6 +975,61 @@ COMMENT ON FUNCTION osmc.neighborsl0(varbit,text)
   IS 'Returns the neighbors of a cell L0 in varbit array, in order: North, North East, East, South East, South, South West, West, North West.'
 ;
 
+CREATE or replace VIEW osmc.vw01neighborsl0 AS
+  SELECT isolabel_ext, l0bits, array_agg(nl0bits)
+  -- SELECT 'WHEN p_iso = ''' || isolabel_ext || ''' AND p_x = b''' || l0bits::text || ''' THEN ARRAY[' || string_agg(CASE WHEN nl0bits IS NULL THEN 'NULL' ELSE 'b''' || nl0bits::text || ''''  END,',') || ']'
+  -- SELECT isolabel_ext, l0bits, MAX(code) AS L0, array_agg(nl0bits), array_agg(ncode)
+  FROM
+  (
+      SELECT
+          c.isolabel_ext,
+          osmc.extract_L0bits(c.cbits,c.isolabel_ext) AS l0bits,
+          CASE
+          WHEN c.isolabel_ext IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh( osmc.extract_L0bits(  c.cbits,c.isolabel_ext),16),(c.cbits::bit(10))::int)
+          ELSE                                  natcod.vbit_to_baseh( osmc.extract_L0bits(  c.cbits,c.isolabel_ext),16)
+          END AS code,
+          c.bbox AS bbox
+          ,
+          osmc.extract_L0bits(  d.cbits,c.isolabel_ext) AS nl0bits,
+          CASE
+          WHEN c.isolabel_ext IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh( osmc.extract_L0bits(  d.cbits,c.isolabel_ext),16),(c.cbits::bit(10))::int)
+          ELSE                                  natcod.vbit_to_baseh( osmc.extract_L0bits(  d.cbits,c.isolabel_ext),16)
+          END AS ncode,
+          d.bbox AS nbbox
+      FROM
+      (
+          SELECT *,
+              CASE npos
+                  WHEN 1 THEN ARRAY[  bbox[1]        ,  bbox[4]        ,  bbox[3]        ,2*bbox[4]-bbox[2]] -- N
+                  WHEN 2 THEN ARRAY[  bbox[3]        ,  bbox[4]        ,2*bbox[3]-bbox[1],2*bbox[4]-bbox[2]] -- NE
+                  WHEN 3 THEN ARRAY[  bbox[3]        ,  bbox[2]        ,2*bbox[3]-bbox[1],  bbox[4]        ] -- E
+                  WHEN 4 THEN ARRAY[  bbox[3]        ,2*bbox[2]-bbox[4],2*bbox[3]-bbox[1],  bbox[2]        ] -- SE
+                  WHEN 5 THEN ARRAY[  bbox[1]        ,2*bbox[2]-bbox[4],  bbox[3]        ,  bbox[2]        ] -- S
+                  WHEN 6 THEN ARRAY[2*bbox[1]-bbox[3],2*bbox[2]-bbox[4],  bbox[1]        ,  bbox[2]        ] -- SW
+                  WHEN 7 THEN ARRAY[2*bbox[1]-bbox[3],  bbox[2]        ,  bbox[1]        ,  bbox[4]        ] -- W
+                  WHEN 8 THEN ARRAY[2*bbox[1]-bbox[3],  bbox[4]        ,  bbox[1]        ,2*bbox[4]-bbox[2]] -- NW
+              END AS nbbox
+          FROM
+          (
+              SELECT cbits, bbox, isolabel_ext, unnest(ARRAY[1,2,3,4,5,6,7,8]) AS npos
+              FROM osmc.coverage c
+              WHERE c.is_country IS TRUE
+          ) r
+      ) c
+      LEFT JOIN
+      (
+          SELECT cbits, bbox
+          FROM osmc.coverage c
+          WHERE c.is_country IS TRUE
+      ) d
+      ON c.nbbox = d.bbox
+      ORDER BY 1, 2, 3, c.npos
+  ) v
+  -- WHERE isolabel_ext IN ('BR','CO')
+  GROUP BY isolabel_ext, l0bits
+  ORDER BY isolabel_ext, l0bits
+;
+
 CREATE or replace FUNCTION osmc.neighbors(
   p_x    varbit, -- cell bits
   p_l0   varbit, -- L0 bits
