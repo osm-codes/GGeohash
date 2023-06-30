@@ -343,6 +343,21 @@ COMMENT ON FUNCTION osmc.decode_16h1c(text,text)
 ;
 -- SELECT osmc.decode_16h1c('fr','BR');
 
+CREATE or replace FUNCTION osmc.extract_L0bits_from_cellbits(
+  p_x   varbit,
+  p_iso text
+) RETURNS varbit AS $wrap$
+  SELECT
+    CASE
+    WHEN p_iso IN ('BR','UY','EC') THEN (p_x)::bit(8) -- Retorna 8 bits
+    WHEN p_iso IN ('CO')           THEN (p_x)::bit(4) -- Retorna 4 bits
+    END
+    ;
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.extract_L0bits_from_cellbits(varbit,text)
+  IS 'Return bits L0 from id cell.'
+;
+
 CREATE or replace FUNCTION osmc.extract_L0bits(
   p_x   varbit,
   p_iso text
@@ -848,3 +863,192 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_ec(geometry(POINT),float,int,text)
   IS 'Encodes geometry to EC Postal OSMcode.'
 ;
+
+------------------
+-- Neighbors:
+
+CREATE or replace FUNCTION osmc.neighbors_raw(
+  p_x varbit -- without L0 bits
+) RETURNS varbit[] AS $f$
+    SELECT ARRAY[ (s | xEb), (s | u)   , (u | xEa) , (r | u)      , (r | xEb) , (r | t)     , (t | xEa) , (s | t)    ] AS neighbors
+        --      [ North    , North East, East      , South East   , South     , South West  , West      , North West ]
+    FROM
+    (
+        SELECT
+            xEb,xEa,
+            substring((xEa::bigint - 1)::bit(64) FROM 65 - length_bits) & a AS r,
+            substring((xOb::bigint + 1)::bit(64) FROM 65 - length_bits) & a AS s,
+            substring((xEb::bigint - 1)::bit(64) FROM 65 - length_bits) & b AS t,
+            substring((xOa::bigint + 1)::bit(64) FROM 65 - length_bits) & b AS u
+        FROM
+        (
+            SELECT
+                a, b,
+                length(p_x) AS length_bits,
+                p_x & a AS xEa,
+                p_x & b AS xEb,
+                p_x | a AS xOa,
+                p_x | b AS xOb
+            FROM
+            (
+                SELECT
+                    substring(b'1010101010101010101010101010101010101010101010101010101010101010' FROM 1 FOR length(p_x)) AS a,
+                    substring(b'0101010101010101010101010101010101010101010101010101010101010101' FROM 1 FOR length(p_x)) AS b
+            ) r
+        ) s
+    ) t
+    ;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.neighbors_raw(varbit)
+  IS 'Returns the neighbors of a cell in varbit array (without L0 bits), in order: North, North East, East, South East, South, South West, West, North West.'
+;
+-- 6aa82d8f1ec: 000001101010101010000010110110001111000111101100
+-- EXPLAIN ANALYZE SELECT osmc.neighbors_raw(b'000001101010101010000010110110001111000111101100');
+
+CREATE or replace FUNCTION osmc.cell_relate(
+  p_x varbit -- without L0 bits
+) RETURNS varbit AS $f$
+        SELECT ( p_x & a = z)::int::bit || ( p_x & b = z)::int::bit || (np_x & a = z)::int::bit || (np_x & b = z)::int::bit AS mask
+                 -- * * * *
+                 -- | | | - East:  set if 1      in all  odd positions of p_x
+                 -- | | --- North: set if 1      in all even positions of p_x
+                 -- | ----- West:  set if 1 only in      odd positions of p_x
+                 -- ------- South: set if 1 only in     even positions of p_x
+        FROM
+        (
+            SELECT ~p_x AS np_x,
+                substring(b'0000000000000000000000000000000000000000000000000000000000000000' FROM 1 FOR length(p_x)) AS z,
+                substring(b'1010101010101010101010101010101010101010101010101010101010101010' FROM 1 FOR length(p_x)) AS a,
+                substring(b'0101010101010101010101010101010101010101010101010101010101010101' FROM 1 FOR length(p_x)) AS b
+        ) s
+    ;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.cell_relate(varbit)
+  IS 'Returns bit(4) with the relative position of the cell in L0.'
+;
+-- EXPLAIN ANALYZE SELECT osmc.cell_relate(osmc.vbit_withoutL0(natcod.baseh_to_vbit(osmc.decode_16h1c('6aaar','BR'),16),'BR'));
+
+CREATE or replace FUNCTION osmc.neighborsl0(
+  p_x    varbit, -- only L0 bits
+  p_iso  text DEFAULT NULL
+) RETURNS varbit[] AS $f$
+    SELECT
+        CASE                                               -- [North, North East, East, South East, South, South West, West, North West]
+            WHEN p_iso = 'BR' AND p_x = b'00000000' THEN ARRAY[NULL,NULL,b'00000001',b'00000101',b'00000100',NULL,NULL,NULL]
+            WHEN p_iso = 'BR' AND p_x = b'00000001' THEN ARRAY[NULL,NULL,b'00000010',b'00000110',b'00000101',b'00000100',b'00000000',NULL]
+            WHEN p_iso = 'BR' AND p_x = b'00000010' THEN ARRAY[NULL,NULL,b'00000011',b'00000111',b'00000110',b'00000101',b'00000001',NULL]
+            WHEN p_iso = 'BR' AND p_x = b'00000011' THEN ARRAY[NULL,NULL,b'00010000',b'00001000',b'00000111',b'00000110',b'00000010',NULL]
+            WHEN p_iso = 'BR' AND p_x = b'00000100' THEN ARRAY[b'00000000',b'00000001',b'00000101',b'00001001',NULL,NULL,NULL,NULL]
+            WHEN p_iso = 'BR' AND p_x = b'00000101' THEN ARRAY[b'00000001',b'00000010',b'00000110',b'00001010',b'00001001',NULL,b'00000100',b'00000000']
+            WHEN p_iso = 'BR' AND p_x = b'00000110' THEN ARRAY[b'00000010',b'00000011',b'00000111',b'00001011',b'00001010',b'00001001',b'00000101',b'00000001']
+            WHEN p_iso = 'BR' AND p_x = b'00000111' THEN ARRAY[b'00000011',b'00010000',b'00001000',b'00010001',b'00001011',b'00001010',b'00000110',b'00000010']
+            WHEN p_iso = 'BR' AND p_x = b'00001000' THEN ARRAY[b'00010000',NULL,NULL,NULL,b'00010001',b'00001011',b'00000111',b'00000011']
+            WHEN p_iso = 'BR' AND p_x = b'00001001' THEN ARRAY[b'00000101',b'00000110',b'00001010',b'00001101',b'00001100',NULL,NULL,b'00000100']
+            WHEN p_iso = 'BR' AND p_x = b'00001010' THEN ARRAY[b'00000110',b'00000111',b'00001011',b'00001110',b'00001101',b'00001100',b'00001001',b'00000101']
+            WHEN p_iso = 'BR' AND p_x = b'00001011' THEN ARRAY[b'00000111',b'00001000',b'00010001',NULL,b'00001110',b'00001101',b'00001010',b'00000110']
+            WHEN p_iso = 'BR' AND p_x = b'00001100' THEN ARRAY[b'00001001',b'00001010',b'00001101',b'00001111',NULL,NULL,NULL,NULL]
+            WHEN p_iso = 'BR' AND p_x = b'00001101' THEN ARRAY[b'00001010',b'00001011',b'00001110',NULL,b'00001111',NULL,b'00001100',b'00001001']
+            WHEN p_iso = 'BR' AND p_x = b'00001110' THEN ARRAY[b'00001011',b'00010001',NULL,NULL,NULL,b'00001111',b'00001101',b'00001010']
+            WHEN p_iso = 'BR' AND p_x = b'00001111' THEN ARRAY[b'00001101',b'00001110',NULL,NULL,NULL,NULL,NULL,b'00001100']
+            WHEN p_iso = 'BR' AND p_x = b'00010000' THEN ARRAY[NULL,NULL,NULL,NULL,b'00001000',b'00000111',b'00000011',NULL]
+            WHEN p_iso = 'BR' AND p_x = b'00010001' THEN ARRAY[b'00001000',NULL,NULL,NULL,NULL,b'00001110',b'00001011',b'00000111']
+            WHEN p_iso = 'CO' AND p_x = b'0000'     THEN ARRAY[NULL,NULL,b'0010',b'0111',b'0101',NULL,NULL,NULL]
+            WHEN p_iso = 'CO' AND p_x = b'0001'     THEN ARRAY[b'0100',b'0110',b'0011',NULL,NULL,NULL,NULL,NULL]
+            WHEN p_iso = 'CO' AND p_x = b'0010'     THEN ARRAY[NULL,NULL,b'1111',b'1101',b'0111',b'0101',b'0000',NULL]
+            WHEN p_iso = 'CO' AND p_x = b'0011'     THEN ARRAY[b'0110',b'1100',b'1001',b'1000',NULL,NULL,b'0001',b'0100']
+            WHEN p_iso = 'CO' AND p_x = b'0100'     THEN ARRAY[b'0101',b'0111',b'0110',b'0011',b'0001',NULL,NULL,NULL]
+            WHEN p_iso = 'CO' AND p_x = b'0101'     THEN ARRAY[b'0000',b'0010',b'0111',b'0110',b'0100',NULL,NULL,NULL]
+            WHEN p_iso = 'CO' AND p_x = b'0110'     THEN ARRAY[b'0111',b'1101',b'1100',b'1001',b'0011',b'0001',b'0100',b'0101']
+            WHEN p_iso = 'CO' AND p_x = b'0111'     THEN ARRAY[b'0010',b'1111',b'1101',b'1100',b'0110',b'0100',b'0101',b'0000']
+            WHEN p_iso = 'CO' AND p_x = b'1000'     THEN ARRAY[b'1001',b'1011',b'1010',NULL,NULL,NULL,NULL,b'0011']
+            WHEN p_iso = 'CO' AND p_x = b'1001'     THEN ARRAY[b'1100',b'1110',b'1011',b'1010',b'1000',NULL,b'0011',b'0110']
+            WHEN p_iso = 'CO' AND p_x = b'1010'     THEN ARRAY[b'1011',NULL,NULL,NULL,NULL,NULL,b'1000',b'1001']
+            WHEN p_iso = 'CO' AND p_x = b'1011'     THEN ARRAY[b'1110',NULL,NULL,NULL,b'1010',b'1000',b'1001',b'1100']
+            WHEN p_iso = 'CO' AND p_x = b'1100'     THEN ARRAY[b'1101',NULL,b'1110',b'1011',b'1001',b'0011',b'0110',b'0111']
+            WHEN p_iso = 'CO' AND p_x = b'1101'     THEN ARRAY[b'1111',NULL,NULL,b'1110',b'1100',b'0110',b'0111',b'0010']
+            WHEN p_iso = 'CO' AND p_x = b'1110'     THEN ARRAY[NULL,NULL,NULL,NULL,b'1011',b'1001',b'1100',b'1101']
+            WHEN p_iso = 'CO' AND p_x = b'1111'     THEN ARRAY[NULL,NULL,NULL,NULL,b'1101',b'0111',b'0010',NULL]
+        END
+    ;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.neighborsl0(varbit,text)
+  IS 'Returns the neighbors of a cell L0 in varbit array, in order: North, North East, East, South East, South, South West, West, North West.'
+;
+
+CREATE or replace FUNCTION osmc.neighbors(
+  p_x    varbit, -- cell bits
+  p_l0   varbit, -- L0 bits
+  p_iso  text
+) RETURNS varbit[] AS $f$
+    SELECT array_agg(n_L0 || n_cell) AS neighbors
+    FROM unnest
+          (
+              osmc.neighbors_raw(p_x),
+              (
+                  SELECT
+                      CASE osmc.cell_relate(p_x)
+                          WHEN b'0000' THEN ARRAY[p_l0,p_l0,p_l0,p_l0,p_l0,p_l0,p_l0,p_l0]
+                          WHEN b'0010' THEN ARRAY[nL0[1],nL0[1],p_l0,p_l0,p_l0,p_l0,p_l0,nL0[1]]
+                          WHEN b'0011' THEN ARRAY[nL0[1],nL0[2],nL0[3],nL0[3],p_l0,p_l0,p_l0,nL0[1]]
+                          WHEN b'0001' THEN ARRAY[p_l0,nL0[3],nL0[3],nL0[3],p_l0,p_l0,p_l0,p_l0]
+                          WHEN b'1001' THEN ARRAY[p_l0,nL0[3],nL0[3],nL0[4],nL0[5],nL0[5],p_l0,p_l0]
+                          WHEN b'1000' THEN ARRAY[p_l0,p_l0,p_l0,nL0[5],nL0[5],nL0[5],p_l0,p_l0]
+                          WHEN b'1100' THEN ARRAY[p_l0,p_l0,p_l0,nL0[5],nL0[5],nL0[6],nL0[7],nL0[7]]
+                          WHEN b'0100' THEN ARRAY[p_l0,p_l0,p_l0,p_l0,p_l0,nL0[7],nL0[7],nL0[7]]
+                          WHEN b'0110' THEN ARRAY[nL0[1],nL0[1],p_l0,p_l0,p_l0,nL0[7],nL0[7],nL0[8]]
+                      END
+                  FROM osmc.neighborsl0(p_L0,p_iso) t(nL0)
+              )
+          ) r(n_cell,n_L0)
+    ;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.neighbors(varbit,varbit,text)
+  IS 'Returns the neighbors of a cell in varbit array (with L0 bits), in order: North, North East, East, South East, South, South West, West, North West.'
+;
+
+CREATE or replace FUNCTION osmc.neighbors(
+  p_x    varbit, -- with L0 bits
+  p_iso  text,
+  p_base int DEFAULT 16
+) RETURNS varbit[] AS $wrap$
+    SELECT osmc.neighbors(osmc.vbit_withoutL0(p_x,p_iso,p_base),osmc.extract_L0bits_from_cellbits(p_x,p_iso),p_iso);
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.neighbors(varbit,text,int)
+  IS 'Returns the neighbors of a cell in varbit array (with L0 bits), in order: North, North East, East, South East, South, South West, West, North West.'
+;
+-- EXPLAIN ANALYZE SELECT osmc.neighbors(natcod.baseh_to_vbit(osmc.decode_16h1c('6aaar','BR'),16),'BR');
+
+CREATE or replace FUNCTION osmc.neighbors_test(
+  p_x    text[],
+  p_iso  text,
+  p_jurisd_base_id int,
+  p_base int DEFAULT 16
+) RETURNS TABLE (prefix text, neighbors text[]) AS $f$
+    SELECT prefix, array_agg(CASE WHEN p_base = 18 THEN osmc.encode_16h1c(natcod.vbit_to_baseh(ng,16),p_jurisd_base_id) ELSE natcod.vbit_to_baseh(ng,16) END)
+    FROM
+    (
+        SELECT prefix, unnest(osmc.neighbors(natcod.baseh_to_vbit(CASE WHEN p_base = 18 THEN osmc.decode_16h1c(prefix,p_iso) ELSE prefix END,16),p_iso,16)) AS ng
+        FROM unnest(p_x) t(prefix)
+    ) s
+    GROUP BY prefix
+    ;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.neighbors_test(text[],text,int,int)
+  IS ''
+;
+-- SELECT * FROM osmc.neighbors_test(ARRAY['6aaar', '6000r', '6fabr', '6fffv', '67ffv', '6555m', '6000h', '6040h', '62aah', '6911m', '6fafr', '8a24v', '0aaar'],'BR',76,18);
+
+CREATE or replace FUNCTION osmc.neighbors_test(
+  p_x    text,
+  p_iso  text,
+  p_jurisd_base_id int,
+  p_base int DEFAULT 16
+) RETURNS TABLE (prefix text, neighbors text[]) AS $f$
+    SELECT *
+    FROM osmc.neighbors_test(ARRAY[p_x],p_iso,p_jurisd_base_id,p_base)
+    ;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.neighbors_test(text[],text,int,int)
+  IS ''
+;
+-- SELECT neighbors FROM osmc.neighbors_test('6aaar','BR',76,18);
