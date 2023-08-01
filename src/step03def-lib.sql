@@ -60,6 +60,20 @@ COMMENT ON FUNCTION osmc.ij_to_bbox(int,int,int,int,int)
 ;
 -- SELECT osmc.ij_to_bbox(0,0,4180000,1035500,262144);
 
+CREATE or replace FUNCTION osmc.ij_to_box2d(
+  i  int, -- coluna
+  j  int, -- linha
+  x0 int, -- referencia de inicio do eixo x [x0,y0]
+  y0 int, -- referencia de inicio do eixo y [x0,y0]
+  s  int  -- lado da célula
+) RETURNS BOX2D AS $f$
+  SELECT ('BOX(' || x0+i*s || ' ' || y0+j*s || ',' || x0+i*s+s || ' ' || y0+j*s+s || ')')::BOX2D
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.ij_to_box2d(int,int,int,int,int)
+ IS 'Retorna box2d de célula da matriz.'
+;
+-- SELECT osmc.ij_to_box2d(0,0,4180000,1035500,262144);
+
 CREATE or replace FUNCTION osmc.xy_to_ij(
   x  int,
   y  int,
