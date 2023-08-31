@@ -216,7 +216,7 @@ CREATE or replace FUNCTION osmc.ggeohash_GeomsFromVarbit(
   SELECT
     CASE
     WHEN p_base = 32 THEN natcod.vbit_to_strstd(p_l0code || p_code || x,'32nvu')
-    ELSE natcod.vbit_to_baseh(p_l0code || p_code || x,p_base)
+    ELSE natcod.vbit_to_baseh(p_l0code || p_code || x,p_base,true)
     END,
     ggeohash.draw_cell_bybox(ggeohash.decode_box2(p_code || x,p_bbox,p_lonlat),p_translate,p_srid)
   FROM
@@ -544,7 +544,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
       SELECT bit_string,
       ggeohash.draw_cell_bybox((CASE WHEN p_bit_length = 0 THEN p_bbox ELSE ggeohash.decode_box2(bit_string,p_bbox,p_lonlat) END),false,p_srid) AS geom_cell,
       osmc.string_base(p_base) AS base,
-      natcod.vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,16) AS code
+      natcod.vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,16,true) AS code
       FROM ggeohash.encode3(p_x,p_y,p_bbox,p_bit_length,p_lonlat) r(bit_string)
     ) c
     -- responsável por subcélulas
@@ -760,8 +760,8 @@ CREATE or replace FUNCTION osmc.encode_postal(
                   'isolabel_ext', p_isolabel_ext,
                   'scientic_code', CASE
                                     WHEN p_jurisd_base_id IN (76,868)
-                                    THEN osmc.encode_16h1c(natcod.vbit_to_baseh(codebits,16),p_jurisd_base_id)
-                                    ELSE                   natcod.vbit_to_baseh(codebits,16)
+                                    THEN osmc.encode_16h1c(natcod.vbit_to_baseh(codebits,16,true),p_jurisd_base_id)
+                                    ELSE                   natcod.vbit_to_baseh(codebits,16,true)
                                     END
                   ))
           )::jsonb)
