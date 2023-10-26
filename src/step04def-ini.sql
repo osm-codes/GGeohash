@@ -1,3 +1,39 @@
+CREATE or replace FUNCTION osmc.L0_upsert(
+  p_isolabel_ext   text,
+  p_status         smallint,
+  p_jurisd_base_id int,
+  p_srid           int,
+  p_x              int,
+  p_y              int,
+  p_side           int,
+  p_grid           int[],
+  p_grid_16        text[]
+) RETURNS text AS $f$
+
+  DELETE FROM osmc.coverage  WHERE isolabel_ext= p_isolabel_ext;
+
+  INSERT INTO osmc.coverage(cbits,isolabel_ext,bbox,status,is_country,is_contained,is_overlay,geom,geom_srid4326)
+  SELECT jurisd_base_id::bit(10) || (natcod.baseh_to_vbit(prefix,16)),
+         p_isolabel_ext,bbox,p_status,TRUE,
+         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN TRUE ELSE FALSE END),
+         FALSE,geom,ST_Transform(geom,4326)
+  FROM
+  (
+      SELECT p_jurisd_base_id AS jurisd_base_id, prefix, bbox,geom_country,
+        ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,p_srid),geom_country) AS geom,
+        ggeohash.draw_cell_bybox(bbox,false,p_srid) AS geom_cell
+      FROM unnest(p_grid_16,p_grid) t(prefix,quadrant),
+          LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,p_x,p_y,p_side)) u(bbox),
+          LATERAL (SELECT ST_Transform(geom,p_srid) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext AND jurisd_base_id = p_jurisd_base_id) r(geom_country)
+      WHERE quadrant IS NOT NULL
+  ) y
+  ORDER BY 1
+  RETURNING 'Ok.'
+  ;
+$f$ LANGUAGE SQL;
+COMMENT ON FUNCTION osmc.L0_upsert(text,smallint,int,int,int,int,int,int[],text[])
+  IS 'Upsert L0cover from '
+;
 
 CREATE or replace FUNCTION osmc.L0cover_upsert_br() RETURNS text AS $f$
   DELETE FROM osmc.coverage  WHERE isolabel_ext='BR';
@@ -98,42 +134,15 @@ COMMENT ON FUNCTION osmc.L0cover_upsert_ec()
   IS 'Upsert L0cover from .'
 ;
 
-CREATE or replace FUNCTION osmc.L0cover_upsert_uy() RETURNS text AS $f$
-  DELETE FROM osmc.coverage  WHERE isolabel_ext='UY';
-  INSERT INTO osmc.coverage(cbits,isolabel_ext,bbox,status,is_country,is_contained,is_overlay,geom,geom_srid4326)
-  SELECT jurisd_base_id::bit(10) || (natcod.baseh_to_vbit(prefix,16)),
-         'UY',bbox,1::SMALLINT,TRUE,
-         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN TRUE ELSE FALSE END),
-         FALSE,geom,ST_Transform(geom,4326)
-  FROM
-  (
-    SELECT 858 AS jurisd_base_id,prefix,bbox,geom_country,
-      ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,32721),geom_country) AS geom,
-      ggeohash.draw_cell_bybox(bbox,false,32721) AS geom_cell
-    FROM unnest
-        (
-          '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
-          array[40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3]
-        ) t(prefix,quadrant),
-        LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,353000,6028000,131072)) u(bbox),
-        LATERAL (SELECT ST_Transform(geom,32721) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'UY' AND jurisd_base_id = 858) r(geom_country)
-    WHERE quadrant IS NOT NULL
-  ) z
-  RETURNING 'Ok.'
-  ;
-$f$ LANGUAGE SQL;
-COMMENT ON FUNCTION osmc.L0cover_upsert_uy()
-  IS 'Upsert L0cover from UY.'
-;
-
 CREATE or replace FUNCTION osmc.L0cover_upsert(
   p_iso text
 ) RETURNS text AS $wrap$
   SELECT
     CASE split_part(p_iso,'-',1)
     WHEN 'BR' THEN osmc.L0cover_upsert_br()
+    WHEN 'CM' THEN osmc.L0_upsert('CM',1::smallint,120,102022,-1745000,170000,262144,'{0,1,2,3,10,11,12,20,21,22,31,32,42,52}'::int[],'{b,c,d,e,8,9,a,5,6,7,3,4,2,1}'::text[])
+    WHEN 'UY' THEN osmc.L0_upsert('UY',1::smallint,858,32721,353000,6028000,131072,'{40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3}'::int[],'{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[])
     WHEN 'CO' THEN osmc.L0cover_upsert_co()
-    WHEN 'UY' THEN osmc.L0cover_upsert_uy()
     WHEN 'EC' THEN osmc.L0cover_upsert_ec()
     END
     ;
@@ -142,6 +151,8 @@ COMMENT ON FUNCTION osmc.L0cover_upsert(text)
   IS 'Upsert L0cover from ISO.'
 ;
 -- SELECT osmc.L0cover_upsert('BR');
+-- select osmc.L0_upsert('CO',1::smallint,170,9377,3678500,970000,524288,'{2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42}'::int[],'{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}'::text[]);
+-- select osmc.L0_upsert('CM',1::smallint,120,102022,-1745000,170000,262144,'{0,1,2,3,10,11,12,20,21,22,31,32,42,52}'::int[],'{b,c,d,e,8,9,a,5,6,7,3,4,2,1}'::text[]);
 
 -- DE_PARA COVER
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
@@ -164,7 +175,7 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
     FROM
     (
       SELECT is_overlay, prefix,
-            ((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
+            ((('{"CM":102022, "CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
             ROW_NUMBER() OVER (PARTITION BY isolabel_ext ORDER BY length(prefix), prefix ASC) AS order_prefix,
             natcod.baseh_to_vbit(prefix,16) AS prefix_bits,
             split_part(p_isolabel_ext,'-',1) AS isocountry
@@ -191,7 +202,7 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
       WHERE isolabel_ext = b.isocountry AND is_country IS TRUE
           AND (
                 CASE
-                WHEN b.isocountry = 'CO' THEN ( ( osmc.extract_L0bits(cbits,'CO')   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+                WHEN b.isocountry IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits,b.isocountry)   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
                 ELSE                    ( ( osmc.extract_L0bits(cbits,b.isocountry) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
                 END
           )
@@ -255,7 +266,7 @@ BEGIN
           END AS prefix
 
         FROM osmc.coverage
-        WHERE (cbits::bit(10)) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- country cover
+        WHERE (cbits::bit(10)) = ((('{"CM":102022, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- country cover
               AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS FALSE
         ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
@@ -277,7 +288,7 @@ BEGIN
           END AS prefix
 
         FROM osmc.coverage
-        WHERE (cbits::bit(10)) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- 76, country cover
+        WHERE (cbits::bit(10)) = ((('{"CM":102022, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- 76, country cover
               AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS TRUE
         ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
@@ -331,8 +342,8 @@ FROM
       FROM
       (
         SELECT p_isolabel_ext AS isolabel_ext,
-               ((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
-               ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS jurisd_base_id,
+               ((('{"CM":102022, "CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
+               ((('{"CM":120, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS jurisd_base_id,
                unnest(p_cover) AS prefix
       ) pp
     ) p,
@@ -341,15 +352,14 @@ FROM
     (
       SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(p.prefix_bits,(split_part(p.isolabel_ext,'-',1)),16),bbox) ELSE bbox END) AS bbox
       FROM osmc.coverage
-      WHERE   (cbits)::bit(10) = ((('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10)
+      WHERE   (cbits)::bit(10) = ((('{"CM":102022,"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10)
           AND is_country IS TRUE
           AND (
                 CASE
-                WHEN (split_part(p.isolabel_ext,'-',1)) = 'CO' THEN ( ( osmc.extract_L0bits(cbits,'CO')   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+                WHEN (split_part(p.isolabel_ext,'-',1)) IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits,(split_part(p.isolabel_ext,'-',1)))   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
                 ELSE                    ( ( osmc.extract_L0bits(cbits,(split_part(p.isolabel_ext,'-',1))) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
                 END
           )
-
     ) s
   ) x,
   -- geom jurisdiction
@@ -439,7 +449,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
 
     WITH list_ggeohash AS
     (
-        SELECT *, (('{"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int AS jurisd_base_id
+        SELECT *, (('{"CM":102022, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int AS jurisd_base_id
         FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction,buffer_type)
         WHERE ggeohash IS NOT NULL
     )
@@ -590,7 +600,7 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
         WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1) -- cobertura nacional apenas
         AND
           CASE
-          WHEN isolabel_ext = 'CO' THEN ( ( osmc.extract_L0bits(cbits,'CO')   # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+          WHEN isolabel_ext IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits,isolabel_ext)   # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
           ELSE                    ( ( osmc.extract_L0bits(cbits,isolabel_ext) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
           END
     ) v,

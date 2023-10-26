@@ -364,7 +364,7 @@ CREATE or replace FUNCTION osmc.extract_L0bits_from_cellbits(
   SELECT
     CASE
     WHEN p_iso IN ('BR','UY','EC') THEN (p_x)::bit(8) -- Retorna 8 bits
-    WHEN p_iso IN ('CO')           THEN (p_x)::bit(4) -- Retorna 4 bits
+    WHEN p_iso IN ('CO','CM')      THEN (p_x)::bit(4) -- Retorna 4 bits
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -379,7 +379,7 @@ CREATE or replace FUNCTION osmc.extract_L0bits(
   SELECT
     CASE
     WHEN p_iso IN ('BR','UY','EC') THEN (p_x<<10)::bit(8) -- Retorna 8 bits
-    WHEN p_iso IN ('CO')           THEN (p_x<<10)::bit(4) -- Retorna 4 bits
+    WHEN p_iso IN ('CO','CM')      THEN (p_x<<10)::bit(4) -- Retorna 4 bits
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -393,8 +393,8 @@ CREATE or replace FUNCTION osmc.extract_L0bits32(
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
-    WHEN p_iso IN ('BR','UY','EC') THEN (p_x<<13)::bit(5) -- Descarta 3 bits MSb
-    WHEN p_iso IN ('CO')           THEN ((p_x<<10)::bit(5))>>1 -- Acrescenta '0' como MSb
+    WHEN p_iso IN ('BR','UY','EC') THEN  (p_x<<13)::bit(5)     -- Descarta 3 bits MSb
+    WHEN p_iso IN ('CO','CM')      THEN ((p_x<<10)::bit(5))>>1 -- Acrescenta '0' como MSb
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -418,7 +418,7 @@ CREATE or replace FUNCTION osmc.vbit_from_b32nvu_to_vbit_16h(
   SELECT
     CASE
     WHEN p_iso IN (76,868,218) THEN b'000' || p_x         -- 5bits MSb viram 8
-    WHEN p_iso IN (170)        THEN substring(p_x,2,4) || substring(p_x from 8) -- 5bits MSb viram 4. eg.: abcdefghijk -> bcdehijk
+    WHEN p_iso IN (170,120)        THEN substring(p_x,2,4) || substring(p_x from 8) -- 5bits MSb viram 4. eg.: abcdefghijk -> bcdehijk
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -434,6 +434,7 @@ CREATE or replace FUNCTION osmc.vbit_from_16h_to_vbit_b32nvu(
     CASE
     WHEN p_iso IN (76,868,218) THEN substring(p_x from 4) -- 8bits MSb viram 5
     WHEN p_iso IN (170)        THEN b'0' || substring(p_x,1,4) || b'00' || substring(p_x from 5) -- 4bits MSb viram 5. eg.: xxxxxxxx -> 0xxxx00xxxx
+    WHEN p_iso IN (120)        THEN b'0' || p_x -- 4bits MSb viram 5
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -449,7 +450,7 @@ CREATE or replace FUNCTION osmc.vbit_withoutL0(
   SELECT
     CASE
     WHEN p_iso IN ('BR','UY','EC') AND p_base <> 32 THEN substring(p_x from 9) -- Remove 8 bits MSb
-    WHEN p_iso IN ('CO')           AND p_base <> 32 THEN substring(p_x from 5) -- Remove 4 bits MSb
+    WHEN p_iso IN ('CO','CM')      AND p_base <> 32 THEN substring(p_x from 5) -- Remove 4 bits MSb
     WHEN p_base = 32                                THEN substring(p_x from 6) -- Remove 5 bits MSb
     END
     ;
@@ -619,6 +620,33 @@ CREATE or replace FUNCTION osmc.encode_scientific_br(
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_br(geometry(POINT),float,int)
   IS 'Encodes geometry to BR Scientific OSMcode.'
+;
+
+CREATE or replace FUNCTION osmc.encode_scientific_cm(
+  p_geom        geometry(POINT),
+  p_uncertainty float  DEFAULT -1,
+  p_grid_size   int    DEFAULT 0
+) RETURNS jsonb AS $f$
+    SELECT osmc.osmcode_encode_scientific(x,y,16,
+      CASE
+      WHEN p_uncertainty > -1 AND u >  4 THEN u-4
+      WHEN p_uncertainty > -1 AND u <= 4 THEN 0
+      ELSE 40
+      END,
+      102022,
+      CASE
+        WHEN u > 37 THEN 0
+        WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 3 ELSE 2 END))
+        WHEN p_grid_size > 0 AND u = 36 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 5 ELSE 4 END))
+        WHEN p_grid_size > 0 AND u = 35 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
+        ELSE p_grid_size
+      END
+      ,bbox,osmc.extract_L0bits(cbits,'CM'),120,FALSE)
+    FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
+    WHERE is_country IS TRUE AND cbits::bit(10) = 120::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_scientific_cm(geometry(POINT),float,int)
+  IS 'Encodes geometry to CM Scientific OSMcode.'
 ;
 
 CREATE or replace FUNCTION osmc.encode_scientific_co(
