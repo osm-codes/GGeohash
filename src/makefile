@@ -16,7 +16,7 @@ info:
 all:
 	@echo "... Installing :"
 	@echo "--- Running SQL NaturalCodes natcod ---"
-	psql $(pg_uri_root)/$(pg_datalake) < $(gits_basepath)/_osmc/NaturalCodes/src/step01def-lib_NatCod.sql
+	psql $(pg_uri_root)/$(pg_datalake) < $(gits_basepath)/_osmc/NaturalCodes/src-sql/step01def-lib_NatCod.sql
 	@echo "--- Running SQL GGeohash ---"
 # 	psql $(pg_uri_root)/$(pg_datalake) < $(gits_basepath)/_osmc/GGeohash/src/step01def-libHcode.sql
 	psql $(pg_uri_root)/$(pg_datalake) < $(gits_basepath)/_osmc/GGeohash/src/step02def-libGGeohash.sql
