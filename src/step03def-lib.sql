@@ -809,7 +809,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
     CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal(geometry(POINT),float,float,int,int,int,int[],varbit,int,boolean,int,text)
-  IS 'Encodes geometry to Postal OSMcode.'
+  IS 'Encodes geometry to Logistic AFAcode.'
 ;
 
 CREATE or replace FUNCTION osmc.encode_postal_br(
@@ -833,7 +833,31 @@ CREATE or replace FUNCTION osmc.encode_postal_br(
     WHERE is_country IS TRUE AND cbits::bit(10) = 76::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_br(geometry(POINT),float,int,text)
-  IS 'Encodes geometry to BR Postal OSMcode.'
+  IS 'Encodes geometry to BR Logistic AFAcode.'
+;
+
+CREATE or replace FUNCTION osmc.encode_postal_cm(
+  p_geom         geometry(POINT),
+  p_uncertainty  float  DEFAULT -1,
+  p_grid_size    int    DEFAULT 0,
+  p_isolabel_ext text   DEFAULT NULL
+) RETURNS jsonb AS $f$
+    SELECT osmc.encode_postal(p_geom,x,y,
+      CASE
+      WHEN p_uncertainty > -1 THEN ((u-4)/5)*5 -1
+      ELSE 31 -- 30 shift 1, 5.7m, L16.5
+      END,
+      102022,
+      CASE
+        WHEN u = 40 THEN 0
+        ELSE p_grid_size
+      END
+      ,bbox,osmc.extract_L0bits(cbits,'CO'),120,FALSE,2,p_isolabel_ext)
+    FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
+    WHERE is_country IS TRUE AND cbits::bit(10) = 120::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_postal_cm(geometry(POINT),float,int,text)
+  IS 'Encodes geometry to CM Logistic AFAcode.'
 ;
 
 CREATE or replace FUNCTION osmc.encode_postal_co(
@@ -857,7 +881,7 @@ CREATE or replace FUNCTION osmc.encode_postal_co(
     WHERE is_country IS TRUE AND cbits::bit(10) = 170::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_co(geometry(POINT),float,int,text)
-  IS 'Encodes geometry to CO Postal OSMcode.'
+  IS 'Encodes geometry to CO Logistic AFAcode.'
 ;
 
 CREATE or replace FUNCTION osmc.encode_postal_uy(
@@ -882,7 +906,7 @@ CREATE or replace FUNCTION osmc.encode_postal_uy(
     WHERE is_country IS TRUE AND cbits::bit(10) = 858::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_uy(geometry(POINT),float,int,text)
-  IS 'Encodes geometry to UY Postal OSMcode.'
+  IS 'Encodes geometry to UY Logistic AFAcode.'
 ;
 
 CREATE or replace FUNCTION osmc.encode_postal_ec(
@@ -907,7 +931,7 @@ CREATE or replace FUNCTION osmc.encode_postal_ec(
     WHERE is_country IS TRUE AND cbits::bit(10) = 218::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_ec(geometry(POINT),float,int,text)
-  IS 'Encodes geometry to EC Postal OSMcode.'
+  IS 'Encodes geometry to EC Logistic AFAcode.'
 ;
 
 ------------------
