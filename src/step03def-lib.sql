@@ -844,7 +844,7 @@ CREATE or replace FUNCTION osmc.encode_postal_cm(
 ) RETURNS jsonb AS $f$
     SELECT osmc.encode_postal(p_geom,x,y,
       CASE
-      WHEN p_uncertainty > -1 THEN ((u-4)/5)*5 -1
+      WHEN p_uncertainty > -1 THEN ((u-4)/5)*5 +1
       ELSE 31 -- 30 shift 1, 5.7m, L16.5
       END,
       102022,
@@ -852,7 +852,7 @@ CREATE or replace FUNCTION osmc.encode_postal_cm(
         WHEN u = 40 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'CO'),120,FALSE,2,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits(cbits,'CO'),120,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND cbits::bit(10) = 120::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
