@@ -434,7 +434,7 @@ CREATE or replace FUNCTION osmc.vbit_from_16h_to_vbit_b32nvu(
     CASE
     WHEN p_iso IN (76,868,218) THEN substring(p_x from 4) -- 8bits MSb viram 5
     WHEN p_iso IN (170)        THEN b'0' || substring(p_x,1,4) || b'00' || substring(p_x from 5) -- 4bits MSb viram 5. eg.: xxxxxxxx -> 0xxxx00xxxx
-    WHEN p_iso IN (120)        THEN b'0' || p_x -- 4bits MSb viram 5
+    WHEN p_iso IN (120)        THEN p_x
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
