@@ -202,8 +202,8 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
       WHERE isolabel_ext = b.isocountry AND is_country IS TRUE
           AND (
                 CASE
-                WHEN b.isocountry IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits,b.isocountry)   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
-                ELSE                    ( ( osmc.extract_L0bits(cbits,b.isocountry) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+                WHEN b.isocountry IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits,b.isocountry) # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+                ELSE                                  ( ( osmc.extract_L0bits(cbits,b.isocountry) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
                 END
           )
     ) s
@@ -266,7 +266,7 @@ BEGIN
           END AS prefix
 
         FROM osmc.coverage
-        WHERE (cbits::bit(10)) = ((('{"CM":102022, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- country cover
+        WHERE (cbits::bit(10)) = ((('{"CM":120, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('CM'))::int)::bit(10) -- country cover
               AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS FALSE
         ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
@@ -288,7 +288,7 @@ BEGIN
           END AS prefix
 
         FROM osmc.coverage
-        WHERE (cbits::bit(10)) = ((('{"CM":102022, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- 76, country cover
+        WHERE (cbits::bit(10)) = ((('{"CM":120, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- 76, country cover
               AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS TRUE
         ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
@@ -301,7 +301,7 @@ BEGIN
     ) TO '%s' CSV HEADER
   $$;
 
-  EXECUTE format(q_copy,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_path);
+  EXECUTE format(q_copy,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_path);
 
   RETURN 'Ok.';
 END
@@ -312,6 +312,7 @@ COMMENT ON FUNCTION osmc.generate_cover_csv(text,text)
 -- SELECT osmc.generate_cover_csv('BR','/tmp/pg_io/coveragebr.csv');
 -- SELECT osmc.generate_cover_csv('CO','/tmp/pg_io/coverageco.csv');
 -- SELECT osmc.generate_cover_csv('UY','/tmp/pg_io/coverageuy.csv');
+-- SELECT osmc.generate_cover_csv('CM','/tmp/pg_io/coveragecm.csv');
 
 CREATE or replace FUNCTION osmc.check_coverage(
   p_isolabel_ext text,
@@ -352,7 +353,7 @@ FROM
     (
       SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(p.prefix_bits,(split_part(p.isolabel_ext,'-',1)),16),bbox) ELSE bbox END) AS bbox
       FROM osmc.coverage
-      WHERE   (cbits)::bit(10) = ((('{"CM":102022,"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10)
+      WHERE   (cbits)::bit(10) = ((('{"CM":120,"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10)
           AND is_country IS TRUE
           AND (
                 CASE
@@ -449,7 +450,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
 
     WITH list_ggeohash AS
     (
-        SELECT *, (('{"CM":102022, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int AS jurisd_base_id
+        SELECT *, (('{"CM":120, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int AS jurisd_base_id
         FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction,buffer_type)
         WHERE ggeohash IS NOT NULL
     )

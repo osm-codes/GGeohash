@@ -272,6 +272,51 @@ COMMENT ON COLUMN osmc.coverage.geom_srid4326  IS 'Coverage cell geometry on 432
 
 COMMENT ON TABLE osmc.coverage IS 'Jurisdictional coverage.';
 
+CREATE or replace VIEW osmc.jurisdictions_select AS
+  SELECT jsonb_object_agg(isolabel_ext,ll) AS gg
+  FROM
+  (
+    SELECT split_part(z.isolabel_ext,'-',1) AS isolabel_ext, jsonb_object_agg(split_part(z.isolabel_ext,'-',2),jsonb_build_object('draft', draft, 'work', work, 'name', x.name)) AS ll
+    FROM
+    (
+      SELECT CASE WHEN b.isolabel_ext IS NULL THEN c.isolabel_ext ELSE b.isolabel_ext END AS isolabel_ext, draft, work
+      FROM
+      (
+        SELECT split_part(isolabel_ext,'-',1) || '-' || split_part(isolabel_ext,'-',2) AS isolabel_ext, jsonb_agg(split_part(isolabel_ext,'-',3)) AS work
+        FROM
+        (
+          SELECT DISTINCT isolabel_ext, status
+          FROM osmc.coverage
+          WHERE is_country IS FALSE AND status <> 0
+          ORDER BY 1
+        ) a
+        GROUP BY split_part(isolabel_ext,'-',1) || '-' || split_part(isolabel_ext,'-',2), status
+        ORDER BY 1
+      ) b
+      FULL OUTER JOIN
+      (
+        SELECT split_part(isolabel_ext,'-',1) || '-' || split_part(isolabel_ext,'-',2) AS isolabel_ext, jsonb_agg(split_part(isolabel_ext,'-',3)) AS draft
+        FROM
+        (
+          SELECT DISTINCT isolabel_ext, status
+          FROM osmc.coverage
+          WHERE is_country IS FALSE AND status = 0
+          ORDER BY 1
+        ) a
+        GROUP BY split_part(isolabel_ext,'-',1) || '-' || split_part(isolabel_ext,'-',2), status
+        ORDER BY 1
+      ) c
+      ON b.isolabel_ext = c.isolabel_ext
+    ) z
+    LEFT JOIN optim.jurisdiction x
+    ON z.isolabel_ext = x.isolabel_ext
+    GROUP BY split_part(z.isolabel_ext,'-',1)
+  ) c
+;
+COMMENT ON VIEW osmc.jurisdictions_select
+  IS 'Generates json for select from AFA.codes website.'
+;
+
 ------------------
 -- encode/decode 16h1c:
 
@@ -418,7 +463,8 @@ CREATE or replace FUNCTION osmc.vbit_from_b32nvu_to_vbit_16h(
   SELECT
     CASE
     WHEN p_iso IN (76,868,218) THEN b'000' || p_x         -- 5bits MSb viram 8
-    WHEN p_iso IN (170,120)        THEN substring(p_x,2,4) || substring(p_x from 8) -- 5bits MSb viram 4. eg.: abcdefghijk -> bcdehijk
+    WHEN p_iso IN (170)        THEN substring(p_x,2,4) || substring(p_x from 8) -- 5bits MSb viram 4. eg.: abcdefghijk -> bcdehijk
+    WHEN p_iso IN (120)        THEN substring(p_x,2,4) || substring(p_x from 10)
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -434,7 +480,7 @@ CREATE or replace FUNCTION osmc.vbit_from_16h_to_vbit_b32nvu(
     CASE
     WHEN p_iso IN (76,868,218) THEN substring(p_x from 4) -- 8bits MSb viram 5
     WHEN p_iso IN (170)        THEN b'0' || substring(p_x,1,4) || b'00' || substring(p_x from 5) -- 4bits MSb viram 5. eg.: xxxxxxxx -> 0xxxx00xxxx
-    WHEN p_iso IN (120)        THEN p_x
+    WHEN p_iso IN (120)        THEN b'0' || substring(p_x,1,4) || b'0000' || substring(p_x from 5)
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -852,7 +898,7 @@ CREATE or replace FUNCTION osmc.encode_postal_cm(
         WHEN u = 40 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'CO'),120,FALSE,1,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits(cbits,'CM'),120,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND cbits::bit(10) = 120::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
