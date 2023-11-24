@@ -400,6 +400,7 @@ CREATE or replace FUNCTION osmc.generate_gridcodes(
           CASE split_part(p_isolabel_ext,'-',1)
             WHEN 'BR' THEN osmc.encode_point_brazil(geom_centroid)
             WHEN 'CO' THEN osmc.encode_point_colombia(geom_centroid)
+            WHEN 'CM' THEN osmc.encode_point_cm(geom_centroid)
           END AS ggeohash,
           geom
     FROM

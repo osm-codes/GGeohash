@@ -540,6 +540,22 @@ COMMENT ON FUNCTION osmc.encode_point_colombia(geometry(POINT),int)
   IS 'Encode Point for Colombia: base 32nvu, default 8 digits'
 ;
 
+CREATE or replace FUNCTION osmc.encode_point_cm(
+  p_geom       geometry(POINT),
+  p_bit_length int DEFAULT 35
+) RETURNS text AS $wrap$
+  SELECT
+    (
+      SELECT (natcod.vbit_to_strstd(osmc.vbit_from_16h_to_vbit_b32nvu(osmc.extract_L0bits(cbits,'CM') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,((p_bit_length-4)/5)*5 +1,false),120),'32nvu'))
+      FROM osmc.coverage
+      WHERE is_country IS TRUE AND cbits::bit(10) = 120::bit(10) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
+    )
+  FROM (SELECT ST_Transform(p_geom,102022)) t(x)
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_point_colombia(geometry(POINT),int)
+  IS 'Encode Point for Colombia: base 32nvu, default 8 digits'
+;
+
 CREATE or replace FUNCTION osmc.string_base(
   p_base int
 ) RETURNS text AS $f$
