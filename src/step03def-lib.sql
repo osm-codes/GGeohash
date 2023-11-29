@@ -183,26 +183,6 @@ COMMENT ON FUNCTION osmc.uncertain_base16h(float)
 ------------------
 -- Others helper functions::
 
-CREATE or replace FUNCTION osmc.str_geocodeiso_decode(iso text)
-RETURNS text[] as $f$
-  SELECT isolabel_ext || array[split_part(isolabel_ext,'-',1)]
-  FROM mvwjurisdiction_synonym
-  WHERE synonym = lower((
-    SELECT
-      CASE
-        WHEN cardinality(u)=2 AND u[2] ~ '^\d+?$'
-        THEN u[1]::text || '-' || ((u[2])::integer)::text
-        ELSE iso
-      END
-    FROM (SELECT regexp_split_to_array(iso,'(-)')::text[] AS u ) r
-  ))
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.str_geocodeiso_decode(text)
-  IS 'Decode abbrev isolabel_ext.'
-;
---SELECT osmc.str_geocodeiso_decode('CO-Itagui');
---SELECT osmc.str_geocodeiso_decode('CO-05282');
-
 CREATE or replace FUNCTION osmc.ggeohash_GeomsFromVarbit(
   p_code      varbit,
   p_l0code    varbit,
