@@ -828,7 +828,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
                   'jurisd_local_id', jurisd_local_id,
                   'jurisd_base_id', p_jurisd_base_id,
                   'isolabel_ext', p_isolabel_ext,
-                  'isolabel_ext_abbrev', (SELECT abbrev FROM optim.jurisdiction_abbrev_option WHERE isolabel_ext = p_isolabel_ext AND default_abbrev IS TRUE),
+                  'isolabel_ext_abbrev', (SELECT abbrev FROM mvwjurisdiction_synonym_default_abbrev x WHERE x.isolabel_ext = p_isolabel_ext),
                   'scientic_code', CASE
                                     WHEN p_jurisd_base_id IN (76,868)
                                     THEN osmc.encode_16h1c(natcod.vbit_to_baseh(codebits,16,true),p_jurisd_base_id)
