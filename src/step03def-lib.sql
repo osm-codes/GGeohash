@@ -1220,3 +1220,47 @@ COMMENT ON FUNCTION osmc.neighbors_test(text[],text,int,int)
   IS ''
 ;
 -- SELECT neighbors FROM osmc.neighbors_test('6aaar','BR',76,18);
+
+
+------------------
+-- hBig <-> AFAcodes scientific:
+
+CREATE or replace FUNCTION osmc.hBig_to_afa_sci(
+  p_b bigint
+) RETURNS text AS $f$
+SELECT
+  CASE x::bit(8)
+    WHEN b'00000001' THEN 'BR+'
+    -- ELSE
+  END
+  ||
+  CASE x::bit(8)
+    WHEN b'00000001' THEN osmc.encode_16h1c(natcod.vbit_to_baseh((x<<8)::bit(48),16,true),76)
+    -- ELSE
+  END
+
+FROM natcod.hBig_to_vBit(p_b) x
+;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.hBig_to_afa_sci(bigint)
+  IS ''
+;
+-- SELECT osmc.hBig_to_afa_sci(37151654485894456);
+
+
+CREATE or replace FUNCTION osmc.afa_sci_to_hBig(
+  p_code text,
+  p_separator text DEFAULT '\+'
+) RETURNS bigint AS $f$
+SELECT
+  CASE u[1]
+    WHEN 'BR' THEN natcod.vBit_to_hBig(1::bit(8)||(natcod.baseh_to_vbit(osmc.decode_16h1c(u[2],'BR'),16)))
+    -- ELSE
+  END
+FROM regexp_split_to_array(p_code,p_separator) u
+;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.afa_sci_to_hBig(text,text)
+  IS ''
+;
+-- SELECT osmc.afa_sci_to_hBig('BR+7fa7740e64a');
