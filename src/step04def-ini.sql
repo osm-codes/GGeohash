@@ -261,13 +261,12 @@ BEGIN
         SELECT isolabel_ext, status,
 
           CASE
-          WHEN '%s' IN ('BR') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),76)
-          WHEN '%s' IN ('UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),858)
+          WHEN '%s' IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),osmc.extract_jurisdbits(cbits))
           ELSE natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
           END AS prefix
 
         FROM osmc.coverage
-        WHERE (cbits::bit(10)) = ((('{"CM":120, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('CM'))::int)::bit(10) -- country cover
+        WHERE osmc.extract_jurisdbits(cbits) = ( SELECT int_country_id FROM optim.jurisdiction WHERE isolevel = 1 AND isolabel_ext = '%s' ) -- country cover
               AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS FALSE
         ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
@@ -283,13 +282,12 @@ BEGIN
         SELECT isolabel_ext, status,
 
           CASE
-          WHEN '%s' IN ('BR') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),76)
-          WHEN '%s' IN ('UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),858)
+          WHEN '%s' IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),osmc.extract_jurisdbits(cbits))
           ELSE natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
           END AS prefix
 
         FROM osmc.coverage
-        WHERE (cbits::bit(10)) = ((('{"CM":120, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->('%s'))::int)::bit(10) -- 76, country cover
+        WHERE osmc.extract_jurisdbits(cbits) = ( SELECT int_country_id FROM optim.jurisdiction WHERE isolevel = 1 AND isolabel_ext = '%s' ) -- country cover
               AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS TRUE
         ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
@@ -302,7 +300,7 @@ BEGIN
     ) TO '%s' CSV HEADER
   $$;
 
-  EXECUTE format(q_copy,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_path);
+  EXECUTE format(q_copy,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_isolabel_ext,p_path);
 
   RETURN 'Ok.';
 END
@@ -338,28 +336,28 @@ FROM
     p.srid AS srid
     FROM
     (
-      SELECT isolabel_ext, srid, jurisd_id, prefix,
+      SELECT isolabel_ext, srid, prefix,
             ROW_NUMBER() OVER (PARTITION BY isolabel_ext ORDER BY length(prefix), prefix ASC) AS order_prefix,
             natcod.baseh_to_vbit(prefix,16) AS prefix_bits
       FROM
       (
         SELECT p_isolabel_ext AS isolabel_ext,
                ((('{"CM":102022, "CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
-               ((('{"CM":120, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS jurisd_id,
                unnest(p_cover) AS prefix
       ) pp
     ) p,
     -- bbox prefix
     LATERAL
     (
-      SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(p.prefix_bits,(split_part(p.isolabel_ext,'-',1))),bbox) ELSE bbox END) AS bbox
+      SELECT (CASE WHEN length(p.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(p.prefix_bits,osmc.extract_jurisdbits(cbits)),bbox) ELSE bbox END) AS bbox
       FROM osmc.coverage
-      WHERE   (cbits)::bit(10) = ((('{"CM":120,"CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p.isolabel_ext,'-',1)))::int)::bit(10)
+      WHERE osmc.extract_jurisdbits(cbits) = ( SELECT int_country_id FROM optim.jurisdiction WHERE isolevel = 1 AND isolabel_ext = (split_part(p.isolabel_ext,'-',1)) )
           AND is_country IS TRUE
           AND (
                 CASE
-                WHEN (split_part(p.isolabel_ext,'-',1)) IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits)   # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
-                ELSE                    ( ( osmc.extract_L0bits(cbits) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+                WHEN (split_part(p.isolabel_ext,'-',1)) IN ('CO','CM')
+                THEN ( ( osmc.extract_L0bits(cbits) # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+                ELSE ( ( osmc.extract_L0bits(cbits) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
                 END
           )
     ) s
@@ -452,7 +450,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
 
     WITH list_ggeohash AS
     (
-        SELECT *, (('{"CM":120, "CO":170, "BR":76, "UY":858, "EC":218}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int AS jurisd_id
+        SELECT *, ( SELECT int_country_id FROM optim.jurisdiction WHERE isolevel = 1 AND isolabel_ext = (split_part(p_isolabel_ext,'-',1)) ) AS int_country_id
         FROM osmc.generate_gridcodes(p_isolabel_ext,p_fraction,buffer_type)
         WHERE ggeohash IS NOT NULL
     )
@@ -470,7 +468,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     GROUP BY 1
                 ) AS cover,
                 ARRAY(
-                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,5)),jurisd_id),16)
+                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,5)),int_country_id),16)
                     FROM list_ggeohash
                     GROUP BY 1
                 ) AS cover_scientific --generate array in scientific base16h
@@ -489,7 +487,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     GROUP BY 1
                 ) AS cover,
                 ARRAY(
-                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,4)),jurisd_id),16)
+                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,4)),int_country_id),16)
                     FROM list_ggeohash
                     GROUP BY 1
                 ) AS cover_scientific --generate array in scientific base16h
@@ -508,7 +506,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     GROUP BY 1
                 ) AS cover,
                 ARRAY(
-                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,3)),jurisd_id),16)
+                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,3)),int_country_id),16)
                     FROM list_ggeohash
                     GROUP BY 1
                 ) AS cover_scientific --generate array in scientific base16h
@@ -527,7 +525,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     GROUP BY 1
                 ) AS cover,
                 ARRAY(
-                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,2)),jurisd_id),16)
+                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,2)),int_country_id),16)
                     FROM list_ggeohash
                     GROUP BY 1
                 ) AS cover_scientific --generate array in scientific base16h
@@ -545,7 +543,7 @@ CREATE or replace FUNCTION osmc.generate_cover(
                     GROUP BY 1
                 ) AS cover,
                 ARRAY(
-                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,1)),jurisd_id),16)
+                    SELECT natcod.vbit_to_baseh(osmc.cbits_b32nvu_to_16h(natcod.b32nvu_to_vbit(substring(ggeohash,1,1)),int_country_id),16)
                     FROM list_ggeohash
                     GROUP BY 1
                 ) AS cover_scientific --generate array in scientific base16h
@@ -589,7 +587,7 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
         (
             SELECT code AS code16h1c,
                 CASE
-                    WHEN p_base = 18 THEN osmc.decode_16h1c(code,upper(split_part(p_isolabel_ext,'-',1)))
+                    WHEN p_base = 18 THEN osmc.decode_16h1c(code, ( SELECT int_country_id FROM optim.jurisdiction WHERE isolevel = 1 AND isolabel_ext = (split_part(p_isolabel_ext,'-',1)) ) )
                     ELSE code
                 END AS code16h
             FROM regexp_split_to_table(upper(p_code),',') code
@@ -603,8 +601,9 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
         WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1) -- cobertura nacional apenas
         AND
           CASE
-          WHEN isolabel_ext IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits)   # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
-          ELSE                    ( ( osmc.extract_L0bits(cbits) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+          WHEN isolabel_ext IN ('CO','CM')
+          THEN ( ( osmc.extract_L0bits(cbits) # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+          ELSE ( ( osmc.extract_L0bits(cbits) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
           END
     ) v,
     LATERAL
@@ -619,7 +618,7 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
             )
         ) AS geom
 
-        FROM osmc.ggeohash_GeomsFromVarbit(osmc.vbit_withoutL0(codebits,(split_part(p_isolabel_ext,'-',1))),(codebits<<3)::bit(5),false,srid,32,32,bbox,false)
+        FROM osmc.ggeohash_GeomsFromVarbit(osmc.vbit_withoutL0(codebits,osmc.extract_jurisdbits(cbits)),(codebits<<3)::bit(5),false,srid,32,32,bbox,false)
 
         WHERE
             ST_Intersects(
@@ -652,9 +651,9 @@ v boolean;
 BEGIN
  v:= (SELECT ST_ContainsProperly(
   (
-    SELECT ggeohash.draw_cell_bybox(ggeohash.decode_box2(osmc.vbit_withoutL0(osmc.cbits_b32nvu_to_16h((natcod.b32nvu_to_vbit(p_val)),p_jurisd_id),p_country_iso),bbox, CASE WHEN p_country_iso = 'EC' THEN TRUE ELSE FALSE END),false,ST_SRID(geom)) AS geom
+    SELECT ggeohash.draw_cell_bybox(ggeohash.decode_box2(osmc.vbit_withoutL0(osmc.cbits_b32nvu_to_16h((natcod.b32nvu_to_vbit(p_val)),osmc.extract_jurisdbits(cbits)),osmc.extract_jurisdbits(cbits)),bbox, CASE WHEN p_country_iso = 'EC' THEN TRUE ELSE FALSE END),false,ST_SRID(geom)) AS geom
     FROM osmc.coverage
-    WHERE is_country IS TRUE AND cbits::bit(10) = p_jurisd_id::bit(8) AND ( ( osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits(cbits),p_jurisd_id) # (natcod.b32nvu_to_vbit(p_val))::bit(5) ) = 0::bit(5) ) -- 1 dígito  base 32nvu
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = p_jurisd_id AND ( ( osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits(cbits),osmc.extract_jurisdbits(cbits)) # (natcod.b32nvu_to_vbit(p_val))::bit(5) ) = 0::bit(5) ) -- 1 dígito  base 32nvu
   )
   ,
   (
@@ -678,19 +677,19 @@ COMMENT ON FUNCTION osmc.cellContainsProperly
 
 -- DROP VIEW osmc.tmpvwcellContainsProperly;
 CREATE or replace VIEW osmc.tmpvwcellContainsProperly AS
-  SELECT isolabel_ext, osmc.cellContainsProperly(ggeohash,isolabel_ext,jurisd_id,country_iso,srid)  /*, natcod.b32nvu_to_vbit(ggeohash) AS codebits*/
+  SELECT isolabel_ext, osmc.cellContainsProperly(ggeohash,isolabel_ext,int_country_id,country_iso,srid)  /*, natcod.b32nvu_to_vbit(ggeohash) AS codebits*/
   FROM
   (
-    SELECT isolabel_ext, jurisd_id, split_part(isolabel_ext,'-',1) AS country_iso, ((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int) AS srid,
+    SELECT isolabel_ext, int_country_id, split_part(isolabel_ext,'-',1) AS country_iso, ((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int) AS srid,
           CASE split_part(isolabel_ext,'-',1)
             WHEN 'BR' THEN osmc.encode_point_brazil(geom_centroid)
             WHEN 'CO' THEN osmc.encode_point_colombia(geom_centroid)
           END AS ggeohash
     FROM
     (
-        SELECT isolabel_ext, jurisd_id, ST_PointOnSurface(ST_Transform(g.geom,((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int))) AS geom_centroid
+        SELECT isolabel_ext, int_country_id, ST_PointOnSurface(ST_Transform(g.geom,((('{"CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(isolabel_ext,'-',1)))::int))) AS geom_centroid
         FROM optim.vw01full_jurisdiction_geom g
-        WHERE jurisd_id IN (170,76) AND isolevel = 3
+        WHERE jurisd_base_id IN (170,76) AND isolevel = 3
     ) r
   ) s
 ;
