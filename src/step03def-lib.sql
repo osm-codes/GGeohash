@@ -490,7 +490,7 @@ CREATE or replace FUNCTION osmc.extract_L0bits(
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.extract_L0bits(varbit,text)
+COMMENT ON FUNCTION osmc.extract_L0bits(varbit,int)
   IS 'Returns the bits of the L0 cell.'
 ;
 
@@ -505,7 +505,7 @@ CREATE or replace FUNCTION osmc.vbit_withoutL0(
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.vbit_withoutL0(varbit,text)
+COMMENT ON FUNCTION osmc.vbit_withoutL0(varbit,int)
   IS 'Return cell bits. Discard L0 bits.'
 ;
 
@@ -552,7 +552,7 @@ CREATE or replace FUNCTION osmc.encode_point_brazil(
       SELECT (natcod.vbit_to_strstd(osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits(cbits,1),1) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,(p_bit_length/5)*5,false),'32nvu'))
 
       FROM osmc.coverage
-      WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 1::bit(8) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
+      WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 1::bit(8) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
     )
   FROM (SELECT ST_Transform(p_geom,952019)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -568,7 +568,7 @@ CREATE or replace FUNCTION osmc.encode_point_colombia(
     (
       SELECT (natcod.vbit_to_strstd(osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits4(cbits) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,((p_bit_length-2)/5)*5 +3,false),2),'32nvu'))
       FROM osmc.coverage
-      WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 2::bit(8) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
+      WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 2::bit(8) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
     )
   FROM (SELECT ST_Transform(p_geom,9377)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -584,7 +584,7 @@ CREATE or replace FUNCTION osmc.encode_point_cm(
     (
       SELECT (natcod.vbit_to_strstd(osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits4(cbits) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,((p_bit_length-4)/5)*5 +1,false),3),'32nvu'))
       FROM osmc.coverage
-      WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 3::bit(8) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
+      WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 3::bit(8) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
     )
   FROM (SELECT ST_Transform(p_geom,102022)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -726,7 +726,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_br(
       END
       ,bbox,osmc.extract_L0bits8(cbits),76,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 1::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 1::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_br(geometry(POINT),float,int)
   IS 'Encodes geometry to BR Scientific OSMcode.'
@@ -753,7 +753,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_cm(
       END
       ,bbox,osmc.extract_L0bits4(cbits),120,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 3::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 3::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_cm(geometry(POINT),float,int)
   IS 'Encodes geometry to CM Scientific OSMcode.'
@@ -780,7 +780,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
       END
       ,bbox,osmc.extract_L0bits4(cbits),170,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 2::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 2::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_co(geometry(POINT),float,int)
   IS 'Encodes geometry to CO Scientific OSMcode.'
@@ -807,7 +807,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_uy(
       END
       ,bbox,osmc.extract_L0bits8(cbits),858,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 4::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 4::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_uy(geometry(POINT),float,int)
   IS 'Encodes geometry to UY Scientific OSMcode.'
@@ -834,7 +834,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
       END
       ,bbox,osmc.extract_L0bits8(cbits),218,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 5::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 5::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_ec(geometry(POINT),float,int)
   IS 'Encodes geometry to EC Scientific OSMcode.'
@@ -935,7 +935,7 @@ CREATE or replace FUNCTION osmc.encode_postal_br(
       END
       ,bbox,osmc.extract_L0bits8(cbits),76,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 1::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 1::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_br(geometry(POINT),float,int,text)
   IS 'Encodes geometry to BR Logistic AFAcode.'
@@ -959,7 +959,7 @@ CREATE or replace FUNCTION osmc.encode_postal_cm(
       END
       ,bbox,osmc.extract_L0bits4(cbits),120,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 3::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 3::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_cm(geometry(POINT),float,int,text)
   IS 'Encodes geometry to CM Logistic AFAcode.'
@@ -983,7 +983,7 @@ CREATE or replace FUNCTION osmc.encode_postal_co(
       END
       ,bbox,osmc.extract_L0bits4(cbits),170,FALSE,2,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 2::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 2::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_co(geometry(POINT),float,int,text)
   IS 'Encodes geometry to CO Logistic AFAcode.'
@@ -1008,7 +1008,7 @@ CREATE or replace FUNCTION osmc.encode_postal_uy(
       END
       ,bbox,osmc.extract_L0bits8(cbits),858,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 4::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 4::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_uy(geometry(POINT),float,int,text)
   IS 'Encodes geometry to UY Logistic AFAcode.'
@@ -1033,7 +1033,7 @@ CREATE or replace FUNCTION osmc.encode_postal_ec(
       END
       ,bbox,osmc.extract_L0bits8(cbits),218,TRUE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 5::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 5::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_ec(geometry(POINT),float,int,text)
   IS 'Encodes geometry to EC Logistic AFAcode.'
