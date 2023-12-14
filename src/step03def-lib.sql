@@ -881,7 +881,6 @@ CREATE or replace FUNCTION osmc.encode_postal(
   p_lonlat     boolean DEFAULT false, -- false: latLon, true: lonLat
   p_type       int     DEFAULT 1, -- 1: isolabel_ext~short_code, 2: ISO-jurisd_local_id~short_code
   p_isolabel_ext text  DEFAULT NULL
-
 ) RETURNS jsonb AS $f$
     SELECT jsonb_build_object(
       'type', 'FeatureCollection',
@@ -897,7 +896,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
                   'jurisd_base_id', p_jurisd_id,
                   'isolabel_ext', p_isolabel_ext,
                   'isolabel_ext_abbrev', (SELECT abbrev FROM mvwjurisdiction_synonym_default_abbrev x WHERE x.isolabel_ext = p_isolabel_ext),
-                  'scientic_code', CASE WHEN p_base IN (18) THEN osmc.encode_16h1c(c.code,p_jurisd_id) ELSE c.code END
+                  'scientic_code', CASE WHEN split_part(p_isolabel_ext,'-',1) IN ('BR','UY') THEN osmc.encode_16h1c(c.code,p_jurisd_id) ELSE c.code END
                   ))
           )::jsonb)
       )
