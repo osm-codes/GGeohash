@@ -480,17 +480,17 @@ COMMENT ON FUNCTION osmc.extract_L0bits8(varbit)
 ;
 
 CREATE or replace FUNCTION osmc.extract_L0bits(
-  p_x   varbit,
-  p_iso int
+  p_x varbit
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
-    WHEN p_iso IN (1,4,5) THEN osmc.extract_L0bits8(p_x)
-    WHEN p_iso IN (2,3)   THEN osmc.extract_L0bits4(p_x)
+    WHEN y IN (1,4,5) THEN osmc.extract_L0bits8(p_x)
+    WHEN y IN (2,3)   THEN osmc.extract_L0bits4(p_x)
     END
+  FROM osmc.extract_jurisdbits(p_x) y
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.extract_L0bits(varbit,int)
+COMMENT ON FUNCTION osmc.extract_L0bits(varbit)
   IS 'Returns the bits of the L0 cell.'
 ;
 
@@ -549,7 +549,7 @@ CREATE or replace FUNCTION osmc.encode_point_brazil(
 ) RETURNS text AS $wrap$
   SELECT
     (
-      SELECT (natcod.vbit_to_strstd(osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits(cbits,1),1) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,(p_bit_length/5)*5,false),'32nvu'))
+      SELECT (natcod.vbit_to_strstd(osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits(cbits),1) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,(p_bit_length/5)*5,false),'32nvu'))
 
       FROM osmc.coverage
       WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 1 AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
@@ -1157,17 +1157,17 @@ CREATE or replace VIEW osmc.vw01neighborsl0 AS
   (
       SELECT
           c.isolabel_ext,
-          osmc.extract_L0bits(c.cbits,c.int_country_id) AS l0bits,
+          osmc.extract_L0bits(c.cbits) AS l0bits,
           CASE
-          WHEN c.int_country_id IN (1,4) THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_L0bits(c.cbits,c.int_country_id),16),c.int_country_id)
-          ELSE                                                  natcod.vbit_to_baseh(osmc.extract_L0bits(c.cbits,c.int_country_id),16)
+          WHEN c.int_country_id IN (1,4) THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_L0bits(c.cbits),16),c.int_country_id)
+          ELSE                                                  natcod.vbit_to_baseh(osmc.extract_L0bits(c.cbits),16)
           END AS code,
           c.bbox AS bbox
           ,
-          osmc.extract_L0bits(  d.cbits,c.int_country_id) AS nl0bits,
+          osmc.extract_L0bits(d.cbits) AS nl0bits,
           CASE
-          WHEN c.int_country_id IN (1,4) THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_L0bits(d.cbits,c.int_country_id),16),c.int_country_id)
-          ELSE                                                  natcod.vbit_to_baseh(osmc.extract_L0bits(d.cbits,c.int_country_id),16)
+          WHEN c.int_country_id IN (1,4) THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_L0bits(d.cbits),16),c.int_country_id)
+          ELSE                                                  natcod.vbit_to_baseh(osmc.extract_L0bits(d.cbits),16)
           END AS ncode,
           d.bbox AS nbbox
       FROM
@@ -1239,7 +1239,7 @@ CREATE or replace FUNCTION osmc.neighbors(
   p_iso  int,
   p_base int DEFAULT 16
 ) RETURNS varbit[] AS $wrap$
-    SELECT osmc.neighbors(osmc.vbit_withoutL0(p_x,p_iso),osmc.extract_L0bits(0::bit(8)||p_x,p_iso),p_iso);
+    SELECT osmc.neighbors(osmc.vbit_withoutL0(p_x,p_iso),osmc.extract_L0bits(0::bit(8)||p_x),p_iso);
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.neighbors(varbit,int,int)
   IS 'Returns the neighbors of a cell in varbit array (with L0 bits), in order: North, North East, East, South East, South, South West, West, North West.'
