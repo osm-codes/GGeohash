@@ -195,7 +195,7 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
     -- bbox prefix
     LEFT JOIN LATERAL
     (
-      SELECT (CASE WHEN length(b.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(b.prefix_bits,b.isocountry),bbox) ELSE bbox END) AS bbox
+      SELECT (CASE WHEN length(b.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(b.prefix_bits,osmc.extract_jurisdbits(cbits)),bbox) ELSE bbox END) AS bbox
       FROM osmc.coverage
       WHERE isolabel_ext = b.isocountry AND is_country IS TRUE
           AND (
@@ -225,14 +225,17 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
 ) RETURNS text AS $f$
   SELECT osmc.update_coverage_isolevel3(p_isolabel_ext,p_status,
     ARRAY(
-    SELECT osmc.decode_16h1c(prefix,upper(split_part(p_isolabel_ext,'-',1)))
+    SELECT osmc.decode_16h1c(prefix,int_country_id)
     FROM unnest(p_cover) g(prefix)
     ),
     ARRAY(
-    SELECT osmc.decode_16h1c(prefix,upper(split_part(p_isolabel_ext,'-',1)))
+    SELECT osmc.decode_16h1c(prefix,int_country_id)
     FROM unnest(p_overlay) g(prefix)
     )
-  );
+  )
+  FROM optim.jurisdiction
+  WHERE isolabel_ext = upper(split_part(p_isolabel_ext,'-',1)) AND isolevel = 1
+  ;
 $f$ LANGUAGE SQL;
 COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h1c.'
