@@ -324,7 +324,7 @@ CREATE or replace FUNCTION osmc.encode_16h1c_br(
       )
     END || substring(p_code,3)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_16h1c_br(text,int)
+COMMENT ON FUNCTION osmc.encode_16h1c_br(text)
   IS 'Encodes ghosts in BR.'
 ;
 
@@ -363,7 +363,7 @@ CREATE or replace FUNCTION osmc.encode_16h1c_uy(
       )
     END || substring(p_code,3)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_16h1c_uy(text,int)
+COMMENT ON FUNCTION osmc.encode_16h1c_uy(text)
   IS 'Encodes ghosts in UY.'
 ;
 
@@ -401,7 +401,7 @@ CREATE or replace FUNCTION osmc.decode_16h1c_br(
       )
     END || substring(p_code,2)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.decode_16h1c_br(text,text)
+COMMENT ON FUNCTION osmc.decode_16h1c_br(text)
   IS 'Decode ghosts in BR.'
 ;
 
@@ -425,7 +425,7 @@ CREATE or replace FUNCTION osmc.decode_16h1c_uy(
       )
     END || substring(p_code,2)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.decode_16h1c_uy(text,text)
+COMMENT ON FUNCTION osmc.decode_16h1c_uy(text)
   IS 'Decode ghosts in UY.'
 ;
 
@@ -481,7 +481,7 @@ COMMENT ON FUNCTION osmc.extract_L0bits8(varbit)
 
 CREATE or replace FUNCTION osmc.extract_L0bits(
   p_x   varbit,
-  p_iso text
+  p_iso int
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
@@ -496,7 +496,7 @@ COMMENT ON FUNCTION osmc.extract_L0bits(varbit,text)
 
 CREATE or replace FUNCTION osmc.vbit_withoutL0(
   p_x  varbit,
-  p_iso text
+  p_iso int
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
