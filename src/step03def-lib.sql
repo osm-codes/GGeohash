@@ -381,6 +381,20 @@ COMMENT ON FUNCTION osmc.encode_16h1c(text,int)
   IS 'Encodes ghosts in BR and UY.'
 ;
 
+CREATE or replace FUNCTION osmc.encode_16h1c(
+  p_code      text,
+  p_jurisd_id text
+) RETURNS text AS $wrap$
+  SELECT
+    CASE
+      WHEN p_jurisd_id = 'BR' THEN osmc.encode_16h1c_br(p_code)
+      WHEN p_jurisd_id = 'UY' THEN osmc.encode_16h1c_uy(p_code)
+    END
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_16h1c(text,text)
+  IS 'Encodes ghosts in BR and UY.'
+;
+
 CREATE or replace FUNCTION osmc.decode_16h1c_br(
   p_code text
 ) RETURNS text AS $wrap$
@@ -440,6 +454,20 @@ CREATE or replace FUNCTION osmc.decode_16h1c(
     END
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.decode_16h1c(text,int)
+  IS 'Encodes ghosts in BR and UY.'
+;
+
+CREATE or replace FUNCTION osmc.decode_16h1c(
+  p_code      text,
+  p_jurisd_id text
+) RETURNS text AS $wrap$
+  SELECT
+    CASE
+      WHEN p_jurisd_id = 'BR' THEN osmc.decode_16h1c_br(p_code)
+      WHEN p_jurisd_id = 'UY' THEN osmc.decode_16h1c_uy(p_code)
+    END
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.decode_16h1c(text,text)
   IS 'Encodes ghosts in BR and UY.'
 ;
 
