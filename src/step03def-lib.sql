@@ -1185,7 +1185,7 @@ CREATE or replace VIEW osmc.vw01neighborsl0 AS
               END AS nbbox
           FROM
           (
-              SELECT cbits, bbox, isolabel_ext, unnest(ARRAY[1,2,3,4,5,6,7,8]) AS npos, c.int_country_id AS int_country_id
+              SELECT cbits, bbox, isolabel_ext, unnest(ARRAY[1,2,3,4,5,6,7,8]) AS npos, osmc.extract_jurisdbits(cbits)::int AS int_country_id
               FROM osmc.coverage c
               WHERE c.is_country IS TRUE
           ) r
@@ -1324,7 +1324,7 @@ CREATE or replace FUNCTION osmc.afa_sci_to_hBig(
 ) RETURNS bigint AS $f$
 SELECT
   CASE u[1]
-    WHEN 'BR' THEN natcod.vBit_to_hBig(1::bit(8)||(natcod.baseh_to_vbit(osmc.decode_16h1c(u[2],'BR'),16)))
+    WHEN 'BR' THEN natcod.vBit_to_hBig(1::bit(8)||(natcod.baseh_to_vbit(osmc.decode_16h1c(u[2],1),16)))
     -- ELSE
   END
 FROM regexp_split_to_array(p_code,p_separator) u
@@ -1334,27 +1334,8 @@ COMMENT ON FUNCTION osmc.afa_sci_to_hBig(text,text)
   IS ''
 ;
 -- SELECT osmc.afa_sci_to_hBig('BR+dfc16cd39s'); -- 37996971798872115
-
-
-
-
-CREATE or replace FUNCTION osmc.afa_sci_to_hBig(
-  p_code varbit,
-  p_iso  text
-) RETURNS bigint AS $f$
-SELECT
-  CASE p_iso
-    WHEN 'BR' THEN natcod.vBit_to_hBig( 1::bit(8) || p_code)
-    -- ELSE
-  END
-;
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.afa_sci_to_hBig(varbit,text)
-  IS ''
-;
 -- SELECT natcod.hBig_to_vBit(37996971798872115); -- 000000010000110111111100000101101100110100111001100
 -- SELECT osmc.afa_sci_to_hBig(b'0000110111111100000101101100110100111001100','BR'); -- 37996971798872115
-
 
 
 -- hBig <-> AFAcodes logistics:
