@@ -1230,7 +1230,7 @@ CREATE or replace FUNCTION osmc.neighbors(
           ) r(n_cell,n_L0)
     ;
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.neighbors(varbit,varbit,text)
+COMMENT ON FUNCTION osmc.neighbors(varbit,varbit,int)
   IS 'Returns the neighbors of a cell in varbit array (with L0 bits), in order: North, North East, East, South East, South, South West, West, North West.'
 ;
 
@@ -1241,7 +1241,7 @@ CREATE or replace FUNCTION osmc.neighbors(
 ) RETURNS varbit[] AS $wrap$
     SELECT osmc.neighbors(osmc.vbit_withoutL0(p_x,p_iso),osmc.extract_L0bits(0::bit(8)||p_x,p_iso),p_iso);
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.neighbors(varbit,text,int)
+COMMENT ON FUNCTION osmc.neighbors(varbit,int,int)
   IS 'Returns the neighbors of a cell in varbit array (with L0 bits), in order: North, North East, East, South East, South, South West, West, North West.'
 ;
 -- EXPLAIN ANALYZE SELECT osmc.neighbors(natcod.baseh_to_vbit(osmc.decode_16h1c('6aaar','BR')),'BR');
@@ -1261,7 +1261,7 @@ CREATE or replace FUNCTION osmc.neighbors_test(
     GROUP BY prefix
     ;
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.neighbors_test(text[],text,int,int)
+COMMENT ON FUNCTION osmc.neighbors_test(text[],int,int,int)
   IS ''
 ;
 -- SELECT * FROM osmc.neighbors_test(ARRAY['6aaar', '6000r', '6fabr', '6fffv', '67ffv', '6555m', '6000h', '6040h', '62aah', '6911m', '6fafr', '8a24v', '0aaar'],'BR',76,18);
@@ -1276,7 +1276,7 @@ CREATE or replace FUNCTION osmc.neighbors_test(
     FROM osmc.neighbors_test(ARRAY[p_x],p_iso,p_jurisd_id,p_base)
     ;
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.neighbors_test(text[],text,int,int)
+COMMENT ON FUNCTION osmc.neighbors_test(text[],int,int,int)
   IS ''
 ;
 -- SELECT neighbors FROM osmc.neighbors_test('6aaar','BR',76,18);
