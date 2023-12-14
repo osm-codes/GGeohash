@@ -595,7 +595,7 @@ CREATE or replace FUNCTION osmc.cover_child_geometries(
     ) c,
     LATERAL
     (
-        SELECT bbox, ST_SRID(geom) AS srid, osmc.extract_L0bits(cbits) AS l0code
+        SELECT bbox, ST_SRID(geom) AS srid, osmc.extract_L0bits(cbits) AS l0code, cbits
 
         FROM osmc.coverage
         WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1) -- cobertura nacional apenas
