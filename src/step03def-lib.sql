@@ -230,25 +230,25 @@ CREATE TABLE osmc.coverage (
   geom           geometry,
   geom_srid4326  geometry
 );
-CREATE INDEX osm_coverage_geom_idx1         ON osmc.coverage USING gist (geom);
-CREATE INDEX osm_coverage_geom4326_idx1     ON osmc.coverage USING gist (geom_srid4326);
-CREATE INDEX osm_coverage_isolabel_ext_idx1 ON osmc.coverage USING btree (isolabel_ext);
-CREATE INDEX osm_coverage_cbits10true_idx        ON osmc.coverage ((cbits::bit(10))) WHERE is_country IS TRUE;
+CREATE INDEX osm_coverage_geom_idx1              ON osmc.coverage USING gist (geom);
+CREATE INDEX osm_coverage_geom4326_idx1          ON osmc.coverage USING gist (geom_srid4326);
+CREATE INDEX osm_coverage_isolabel_ext_idx1      ON osmc.coverage USING btree (isolabel_ext);
+CREATE INDEX osm_coverage_cbits10true_idx        ON osmc.coverage ((cbits::bit(8))) WHERE is_country IS TRUE;
 CREATE INDEX osm_coverage_isolabel_ext_true_idx  ON osmc.coverage (isolabel_ext) WHERE is_country IS TRUE;
 CREATE INDEX osm_coverage_isolabel_ext_false_idx ON osmc.coverage (isolabel_ext) WHERE is_country IS FALSE;
-CREATE INDEX osm_coverage_cbits15false_idx       ON osmc.coverage ((cbits::bit(14)),isolabel_ext) WHERE is_country IS FALSE;
+CREATE INDEX osm_coverage_cbits15false_idx       ON osmc.coverage ((cbits::bit(12)),isolabel_ext) WHERE is_country IS FALSE;
 
-COMMENT ON COLUMN osmc.coverage.cbits          IS 'Coverage cell identifier.';
-COMMENT ON COLUMN osmc.coverage.isolabel_ext   IS 'ISO 3166-1 alpha-2 code and name (camel case); e.g. BR-SP-SaoPaulo.';
-COMMENT ON COLUMN osmc.coverage.cindex         IS 'Coverage cell prefix in 32nvu.  Used only case is_country=false.';
-COMMENT ON COLUMN osmc.coverage.bbox           IS 'Coverage cell bbox.';
-COMMENT ON COLUMN osmc.coverage.status         IS 'Coverage status. Convention: 0: generated, 1: revised, 2: homologated.';
-COMMENT ON COLUMN osmc.coverage.is_country     IS 'True if it is a cell of national coverage..';
-COMMENT ON COLUMN osmc.coverage.is_contained   IS 'True if it is a cell contained in the jurisdiction..';
-COMMENT ON COLUMN osmc.coverage.is_overlay     IS 'True if it is an overlay cell.';
-COMMENT ON COLUMN osmc.coverage.kx_prefix      IS 'Coverage cell prefix in 32nvu.';
-COMMENT ON COLUMN osmc.coverage.geom           IS 'Coverage cell geometry on default srid.';
-COMMENT ON COLUMN osmc.coverage.geom_srid4326  IS 'Coverage cell geometry on 4326 srid. Used only case is_country=true.';
+COMMENT ON COLUMN osmc.coverage.cbits            IS 'Coverage cell identifier.';
+COMMENT ON COLUMN osmc.coverage.isolabel_ext     IS 'ISO 3166-1 alpha-2 code and name (camel case); e.g. BR-SP-SaoPaulo.';
+COMMENT ON COLUMN osmc.coverage.cindex           IS 'Coverage cell prefix in 32nvu.  Used only case is_country=false.';
+COMMENT ON COLUMN osmc.coverage.bbox             IS 'Coverage cell bbox.';
+COMMENT ON COLUMN osmc.coverage.status           IS 'Coverage status. Convention: 0: generated, 1: revised, 2: homologated.';
+COMMENT ON COLUMN osmc.coverage.is_country       IS 'True if it is a cell of national coverage..';
+COMMENT ON COLUMN osmc.coverage.is_contained     IS 'True if it is a cell contained in the jurisdiction..';
+COMMENT ON COLUMN osmc.coverage.is_overlay       IS 'True if it is an overlay cell.';
+COMMENT ON COLUMN osmc.coverage.kx_prefix        IS 'Coverage cell prefix in 32nvu.';
+COMMENT ON COLUMN osmc.coverage.geom             IS 'Coverage cell geometry on default srid.';
+COMMENT ON COLUMN osmc.coverage.geom_srid4326    IS 'Coverage cell geometry on 4326 srid. Used only case is_country=true.';
 
 COMMENT ON TABLE osmc.coverage IS 'Jurisdictional coverage.';
 
@@ -300,14 +300,13 @@ COMMENT ON VIEW osmc.jurisdictions_select
 ------------------
 -- encode/decode 16h1c:
 
-CREATE or replace FUNCTION osmc.encode_16h1c(
-  p_code           text,
-  p_jurisd_base_id int
+CREATE or replace FUNCTION osmc.encode_16h1c_br(
+  p_code text
 ) RETURNS text AS $wrap$
   SELECT
     CASE
       -- tr g->F, q->F
-      WHEN p_jurisd_base_id = 76 AND length(p_code) > 2
+      WHEN length(p_code) > 2
       THEN
       (
         ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
@@ -315,13 +314,32 @@ CREATE or replace FUNCTION osmc.encode_16h1c(
            "10": "f", "11": "f", "12": "h", "13": "m", "14": "r", "15": "v", "16": "j", "17": "k",
            "18": "n", "19": "p", "1a": "s", "1b": "t", "1c": "z", "1d": "y"}'::jsonb)->>(substring(p_code,1,2))
       )
+      WHEN length(p_code) = 2
+      THEN
+      (
+        ('{"00": "0", "01": "1", "02": "2", "03": "3", "04": "4", "05": "5", "06": "6", "07": "7",
+          "08": "8", "09": "9", "0a": "a", "0b": "b", "0c": "c", "0d": "d", "0e": "e", "0f": "f",
+          "10": "g", "11": "q", "12": "h", "13": "m", "14": "r", "15": "v", "16": "j", "17": "k",
+          "18": "n", "19": "p", "1a": "s", "1b": "t", "1c": "z", "1d": "y"}'::jsonb)->>(substring(p_code,1,2))
+      )
+    END || substring(p_code,3)
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_16h1c_br(text,int)
+  IS 'Encodes ghosts in BR.'
+;
+
+CREATE or replace FUNCTION osmc.encode_16h1c_uy(
+  p_code text
+) RETURNS text AS $wrap$
+  SELECT
+    CASE
       -- tr g->E, q->5, h->0
-      WHEN p_jurisd_base_id = 858 AND length(p_code) > 2 AND substring(p_code,1,3) IN ('100','101','102','10h','10j','10k', '12a','12b','12t', '11v','11z','11y','11c','11d','11e','11f')
+      WHEN length(p_code) > 2 AND substring(p_code,1,3) IN ('100','101','102','10h','10j','10k', '12a','12b','12t', '11v','11z','11y','11c','11d','11e','11f')
       THEN
       (
         ('{"10": "e", "11": "5", "12": "0"}'::jsonb)->>(substring(p_code,1,2))
       )
-      WHEN p_jurisd_base_id = 858 AND length(p_code) > 2 AND substring(p_code,1,3) NOT IN (
+      WHEN length(p_code) > 2 AND substring(p_code,1,3) NOT IN (
       '0e0','0e1','0e2','0ej','0eh','0ek',
       '00a','00b','00t',
       '05v','05z','05y','05c','05d','05e','05f',
@@ -345,29 +363,35 @@ CREATE or replace FUNCTION osmc.encode_16h1c(
       )
     END || substring(p_code,3)
 $wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_16h1c_uy(text,int)
+  IS 'Encodes ghosts in UY.'
+;
+
+CREATE or replace FUNCTION osmc.encode_16h1c(
+  p_code      text,
+  p_jurisd_id int
+) RETURNS text AS $wrap$
+  SELECT
+    CASE
+      WHEN p_jurisd_id = 1 THEN osmc.encode_16h1c_br(p_code)
+      WHEN p_jurisd_id = 4 THEN osmc.encode_16h1c_uy(p_code)
+    END
+$wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_16h1c(text,int)
   IS 'Encodes ghosts in BR and UY.'
 ;
 
-CREATE or replace FUNCTION osmc.decode_16h1c(
-  p_code text,
-  p_iso  text
+CREATE or replace FUNCTION osmc.decode_16h1c_br(
+  p_code text
 ) RETURNS text AS $wrap$
   SELECT
     CASE
       -- fr,ft,fs,fa,fb,f8,f9: tr f -> 0f
-      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fr','ft','fs','fa','fb','f8','f9') THEN ('0f')
+      WHEN substring(p_code,1,2) IN ('fr','ft','fs','fa','fb','f8','f9') THEN ('0f')
       -- fn,f4,f5: tr f -> q
-      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fn','f4','f5')                     THEN ('11')
+      WHEN substring(p_code,1,2) IN ('fn','f4','f5')                     THEN ('11')
       -- fp,f6,f7: tr f -> g
-      WHEN p_iso = 'BR' AND substring(p_code,1,2) IN ('fp','f6','f7')                     THEN ('10')
-
-      -- e0,e1,e2,eh,ej,ek: tr f -> g
-      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('e0','e1','e2','eh','ej','ek')      THEN ('10')
-      -- 0a,0b,0t: tr 0 -> h
-      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('0a','0b','0t')                     THEN ('12')
-      -- 5v,5z,5y,5c,5d,5e,5f: tr 5 -> q
-      WHEN p_iso = 'UY' AND substring(p_code,1,2) IN ('5v','5z','5y','5c','5d','5e','5f') THEN ('11')
+      WHEN substring(p_code,1,2) IN ('fp','f6','f7')                     THEN ('10')
       ELSE
       (
         ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
@@ -377,24 +401,82 @@ CREATE or replace FUNCTION osmc.decode_16h1c(
       )
     END || substring(p_code,2)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.decode_16h1c(text,text)
-  IS 'Decode ghosts in BR and UY.'
+COMMENT ON FUNCTION osmc.decode_16h1c_br(text,text)
+  IS 'Decode ghosts in BR.'
 ;
--- SELECT osmc.decode_16h1c('fr','BR');
 
-CREATE or replace FUNCTION osmc.extract_L0bits_from_cellbits(
-  p_x   varbit,
-  p_iso text
-) RETURNS varbit AS $wrap$
+CREATE or replace FUNCTION osmc.decode_16h1c_uy(
+  p_code text
+) RETURNS text AS $wrap$
   SELECT
     CASE
-    WHEN p_iso IN ('BR','UY','EC') THEN (p_x)::bit(8) -- Retorna 8 bits
-    WHEN p_iso IN ('CO','CM')      THEN (p_x)::bit(4) -- Retorna 4 bits
-    END
-    ;
+      -- e0,e1,e2,eh,ej,ek: tr f -> g
+      WHEN substring(p_code,1,2) IN ('e0','e1','e2','eh','ej','ek')      THEN ('10')
+      -- 0a,0b,0t: tr 0 -> h
+      WHEN substring(p_code,1,2) IN ('0a','0b','0t')                     THEN ('12')
+      -- 5v,5z,5y,5c,5d,5e,5f: tr 5 -> q
+      WHEN substring(p_code,1,2) IN ('5v','5z','5y','5c','5d','5e','5f') THEN ('11')
+      ELSE
+      (
+        ('{"0": "00", "1": "01", "2": "02", "3": "03", "4": "04", "5": "05", "6": "06", "7": "07",
+        "8": "08", "9": "09", "a": "0a", "b": "0b", "c": "0c", "d": "0d", "e": "0e", "f": "0f",
+        "g": "10", "q": "11", "h": "12", "m": "13", "r": "14", "v": "15", "j": "16", "k": "17",
+        "n": "18", "p": "19", "s": "1a", "t": "1b", "z": "1c", "y": "1d"}'::jsonb)->>(substring(p_code,1,1))
+      )
+    END || substring(p_code,2)
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.extract_L0bits_from_cellbits(varbit,text)
-  IS 'Return bits L0 from id cell.'
+COMMENT ON FUNCTION osmc.decode_16h1c_uy(text,text)
+  IS 'Decode ghosts in UY.'
+;
+
+CREATE or replace FUNCTION osmc.decode_16h1c(
+  p_code      text,
+  p_jurisd_id int
+) RETURNS text AS $wrap$
+  SELECT
+    CASE
+      WHEN p_jurisd_id = 1 THEN osmc.decode_16h1c_br(p_code)
+      WHEN p_jurisd_id = 4 THEN osmc.decode_16h1c_uy(p_code)
+    END
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.decode_16h1c(text,int)
+  IS 'Encodes ghosts in BR and UY.'
+;
+
+CREATE or replace FUNCTION osmc.extract_cellbits(
+  p_x  varbit
+) RETURNS varbit AS $f$
+  SELECT substring(p_x from 9);
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.extract_cellbits(varbit)
+  IS 'Return cell bits. Discard jurisdiction bits.'
+;
+
+CREATE or replace FUNCTION osmc.extract_jurisdbits(
+  p_x  varbit
+) RETURNS varbit AS $f$
+  SELECT p_x::bit(8);
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.extract_jurisdbits(varbit)
+  IS 'Return jurisdiction bits. Discard cell bits.'
+;
+
+CREATE or replace FUNCTION osmc.extract_L0bits4(
+  p_x varbit
+) RETURNS varbit AS $f$
+  SELECT (osmc.extract_cellbits(p_x))::bit(4);
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.extract_L0bits4(varbit)
+  IS 'Returns 4 bits of L0. Discard 8 bits from the country.'
+;
+
+CREATE or replace FUNCTION osmc.extract_L0bits8(
+  p_x varbit
+) RETURNS varbit AS $f$
+  SELECT (osmc.extract_cellbits(p_x))::bit(8);
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.extract_L0bits8(varbit)
+  IS 'Returns 8 bits of L0. Discard 8 bits from the country.'
 ;
 
 CREATE or replace FUNCTION osmc.extract_L0bits(
@@ -403,86 +485,60 @@ CREATE or replace FUNCTION osmc.extract_L0bits(
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
-    WHEN p_iso IN ('BR','UY','EC') THEN (p_x<<10)::bit(8) -- Retorna 8 bits
-    WHEN p_iso IN ('CO','CM')      THEN (p_x<<10)::bit(4) -- Retorna 4 bits
+    WHEN p_iso IN (1,4,5) THEN osmc.extract_L0bits8(p_x)
+    WHEN p_iso IN (2,3)   THEN osmc.extract_L0bits4(p_x)
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.extract_L0bits(varbit,text)
-  IS 'Return bits L0 from id cell.'
-;
-
-CREATE or replace FUNCTION osmc.extract_L0bits32(
-  p_x   varbit,
-  p_iso text
-) RETURNS varbit AS $wrap$
-  SELECT
-    CASE
-    WHEN p_iso IN ('BR','UY','EC') THEN  (p_x<<13)::bit(5)     -- Descarta 3 bits MSb
-    WHEN p_iso IN ('CO','CM')      THEN ((p_x<<10)::bit(5))>>1 -- Acrescenta '0' como MSb
-    END
-    ;
-$wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.extract_L0bits32(varbit,text)
-  IS 'Return bits L0 from id cell.'
-;
-
-CREATE or replace FUNCTION osmc.extract_cellbits(
-  p_x  varbit
-) RETURNS varbit AS $f$
-  SELECT substring(p_x from 11);
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.extract_cellbits(varbit)
-  IS 'Return cell bits. Discard jurisdiction bits.'
-;
-
-CREATE or replace FUNCTION osmc.vbit_from_b32nvu_to_vbit_16h(
-  p_x  varbit,
-  p_iso int
-) RETURNS varbit AS $wrap$
-  SELECT
-    CASE
-    WHEN p_iso IN (76,868,218) THEN b'000' || p_x         -- 5bits MSb viram 8
-    WHEN p_iso IN (170)        THEN substring(p_x,2,4) || substring(p_x from 8) -- 5bits MSb viram 4. eg.: abcdefghijk -> bcdehijk
-    WHEN p_iso IN (120)        THEN substring(p_x,2,4) || substring(p_x from 10)
-    END
-    ;
-$wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.vbit_from_b32nvu_to_vbit_16h(varbit,int)
-  IS 'Convert 5-bit L0 to 4-bit L0.'
-;
-
-CREATE or replace FUNCTION osmc.vbit_from_16h_to_vbit_b32nvu(
-  p_x  varbit,
-  p_iso int
-) RETURNS varbit AS $wrap$
-  SELECT
-    CASE
-    WHEN p_iso IN (76,868,218) THEN substring(p_x from 4) -- 8bits MSb viram 5
-    WHEN p_iso IN (170)        THEN b'0' || substring(p_x,1,4) || b'00' || substring(p_x from 5) -- 4bits MSb viram 5. eg.: xxxxxxxx -> 0xxxx00xxxx
-    WHEN p_iso IN (120)        THEN b'0' || substring(p_x,1,4) || b'0000' || substring(p_x from 5)
-    END
-    ;
-$wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.vbit_from_16h_to_vbit_b32nvu(varbit,int)
-  IS 'Convert 4-bit L0 to 5-bit L0.'
+  IS 'Returns the bits of the L0 cell.'
 ;
 
 CREATE or replace FUNCTION osmc.vbit_withoutL0(
   p_x  varbit,
-  p_iso text,
-  p_base int DEFAULT 16
+  p_iso text
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
-    WHEN p_iso IN ('BR','UY','EC') AND p_base <> 32 THEN substring(p_x from 9) -- Remove 8 bits MSb
-    WHEN p_iso IN ('CO','CM')      AND p_base <> 32 THEN substring(p_x from 5) -- Remove 4 bits MSb
-    WHEN p_base = 32                                THEN substring(p_x from 6) -- Remove 5 bits MSb
+    WHEN p_iso IN (1,4,5) THEN substring(p_x from 9) -- Remove 8 bits MSb
+    WHEN p_iso IN (2,3)   THEN substring(p_x from 5) -- Remove 4 bits MSb
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.vbit_withoutL0(varbit,text,int)
-  IS 'Remove 4-bit or 8-bit L0.'
+COMMENT ON FUNCTION osmc.vbit_withoutL0(varbit,text)
+  IS 'Return cell bits. Discard L0 bits.'
+;
+
+CREATE or replace FUNCTION osmc.cbits_b32nvu_to_16h(
+  p_x  varbit,
+  p_iso int
+) RETURNS varbit AS $wrap$
+  SELECT
+    CASE
+    WHEN p_iso IN (1,4,5) THEN b'000' || p_x         -- 5bits MSb viram 8
+    WHEN p_iso IN (2)     THEN substring(p_x,2,4) || substring(p_x from 8) -- 5bits MSb viram 4. eg.: abcdefghijk -> bcdehijk
+    WHEN p_iso IN (3)     THEN substring(p_x,2,4) || substring(p_x from 10)
+    END
+    ;
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.cbits_b32nvu_to_16h(varbit,int)
+  IS 'Convert 5-bit L0 to 4-bit L0.'
+;
+
+CREATE or replace FUNCTION osmc.cbits_16h_to_b32nvu(
+  p_x  varbit,
+  p_iso int
+) RETURNS varbit AS $wrap$
+  SELECT
+    CASE
+    WHEN p_iso IN (1,4,5) THEN substring(p_x from 4) -- 8bits MSb viram 5
+    WHEN p_iso IN (2)     THEN b'0' || substring(p_x,1,4) || b'00' || substring(p_x from 5) -- 4bits MSb viram 5. eg.: xxxxxxxx -> 0xxxx00xxxx
+    WHEN p_iso IN (3)     THEN b'0' || substring(p_x,1,4) || b'0000' || substring(p_x from 5)
+    END
+    ;
+$wrap$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.cbits_16h_to_b32nvu(varbit,int)
+  IS 'Convert 4-bit L0 to 5-bit L0.'
 ;
 
 -- specific encode for b32nvu and 8 digits:
@@ -493,10 +549,10 @@ CREATE or replace FUNCTION osmc.encode_point_brazil(
 ) RETURNS text AS $wrap$
   SELECT
     (
-      SELECT (natcod.vbit_to_strstd(osmc.extract_L0bits32(cbits,'BR') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,(p_bit_length/5)*5,false),'32nvu'))
+      SELECT (natcod.vbit_to_strstd(osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits(cbits,1),1) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,(p_bit_length/5)*5,false),'32nvu'))
 
       FROM osmc.coverage
-      WHERE is_country IS TRUE AND cbits::bit(10) = 76::bit(10) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
+      WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 1::bit(8) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
     )
   FROM (SELECT ST_Transform(p_geom,952019)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -510,9 +566,9 @@ CREATE or replace FUNCTION osmc.encode_point_colombia(
 ) RETURNS text AS $wrap$
   SELECT
     (
-      SELECT (natcod.vbit_to_strstd(osmc.vbit_from_16h_to_vbit_b32nvu(osmc.extract_L0bits(cbits,'CO') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,((p_bit_length-2)/5)*5 +3,false),170),'32nvu'))
+      SELECT (natcod.vbit_to_strstd(osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits4(cbits) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,((p_bit_length-2)/5)*5 +3,false),2),'32nvu'))
       FROM osmc.coverage
-      WHERE is_country IS TRUE AND cbits::bit(10) = 170::bit(10) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
+      WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 2::bit(8) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
     )
   FROM (SELECT ST_Transform(p_geom,9377)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -526,9 +582,9 @@ CREATE or replace FUNCTION osmc.encode_point_cm(
 ) RETURNS text AS $wrap$
   SELECT
     (
-      SELECT (natcod.vbit_to_strstd(osmc.vbit_from_16h_to_vbit_b32nvu(osmc.extract_L0bits(cbits,'CM') || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,((p_bit_length-4)/5)*5 +1,false),120),'32nvu'))
+      SELECT (natcod.vbit_to_strstd(osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits4(cbits) || ggeohash.encode3(ST_X(x),ST_Y(x),bbox,((p_bit_length-4)/5)*5 +1,false),3),'32nvu'))
       FROM osmc.coverage
-      WHERE is_country IS TRUE AND cbits::bit(10) = 120::bit(10) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
+      WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 3::bit(8) AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
     )
   FROM (SELECT ST_Transform(p_geom,102022)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -554,8 +610,23 @@ COMMENT ON FUNCTION osmc.string_base(int)
 
 -- encode scientific:
 
+CREATE or replace FUNCTION osmc.encode(
+  p_x          float,
+  p_y          float,
+  p_bit_length int     DEFAULT 40,
+  p_srid       int     DEFAULT 9377,
+  p_bbox       int[]   DEFAULT array[0,0,0,0],
+  p_l0code     varbit  DEFAULT b'0',
+  p_lonlat     boolean DEFAULT FALSE  -- false: latLon, true: lonLat
+) RETURNS TABLE (bit_string varbit, geom geometry) AS $f$
+  SELECT bit_string, ggeohash.draw_cell_bybox((CASE WHEN p_bit_length = 0 THEN p_bbox ELSE ggeohash.decode_box2(bit_string,p_bbox,p_lonlat) END),false,p_srid) AS geom
+  FROM ggeohash.encode3(p_x,p_y,p_bbox,p_bit_length,p_lonlat) r(bit_string)
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode(float,float,int,int,int[],varbit,int,boolean)
+  IS ''
+;
+
 CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
-  -- p_geom       geometry(POINT),
   p_x          float,
   p_y          float,
   p_base       int     DEFAULT 16,
@@ -564,31 +635,28 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
   p_grid_size  int     DEFAULT 2,
   p_bbox       int[]   DEFAULT array[0,0,0,0],
   p_l0code     varbit  DEFAULT b'0',
-  p_jurisd_base_id int DEFAULT 170,
+  p_jurisd_id  int     DEFAULT 170,
   p_lonlat     boolean DEFAULT false  -- false: latLon, true: lonLat
 ) RETURNS jsonb AS $f$
     SELECT jsonb_build_object(
       'type', 'FeatureCollection',
       'features',
         (
-          (ST_AsGeoJSONb(ST_Transform_resilient(geom_cell,4326,0.005),8,0,null,
+          (ST_AsGeoJSONb(ST_Transform_resilient(c.geom,4326,0.005),8,0,null,
               jsonb_strip_nulls(jsonb_build_object(
-                  'code', CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END,
-                  'area', ST_Area(geom_cell),
-                  'side', SQRT(ST_Area(geom_cell)),
-                  'base', base,
-                  'jurisd_base_id',p_jurisd_base_id
+                  'code', CASE WHEN p_base IN (18) THEN osmc.encode_16h1c(c.code,p_jurisd_id) ELSE c.code END,
+                  'area', ST_Area(c.geom),
+                  'side', SQRT(ST_Area(c.geom)),
+                  'base', osmc.string_base(p_base),
+                  'jurisd_base_id',p_jurisd_id ***
                   ))
           )::jsonb) || m.subcells
         )
       )
     FROM
     (
-      SELECT bit_string,
-      ggeohash.draw_cell_bybox((CASE WHEN p_bit_length = 0 THEN p_bbox ELSE ggeohash.decode_box2(bit_string,p_bbox,p_lonlat) END),false,p_srid) AS geom_cell,
-      osmc.string_base(p_base) AS base,
-      natcod.vbit_to_baseh(CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END,16,true) AS code
-      FROM ggeohash.encode3(p_x,p_y,p_bbox,p_bit_length,p_lonlat) r(bit_string)
+      SELECT bit_string, natcod.vbit_to_baseh((CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END),16,true) AS code, geom
+      FROM  osmc.encode(p_x,p_y,p_bit_length,p_srid,p_bbox,p_l0code,p_lonlat)
     ) c
     -- responsável por subcélulas
     LEFT JOIN LATERAL
@@ -602,18 +670,18 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
                 ST_AsGeoJSONb(ST_Transform_resilient((CASE WHEN p_grid_size % 2 = 1 THEN ST_Centroid(geom) ELSE geom END),4326,0.005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', ghs2,
-                        'code_subcell', (CASE WHEN length(code2) = length(ghs2) THEN substring(ghs2 FROM length(code2)) ELSE substring(ghs2 FROM length(code2)+1) END) ,
-                        'prefix', code2,
+                        'code_subcell', (CASE WHEN length(code_sci) = length(ghs2) THEN substring(ghs2 FROM length(code_sci)) ELSE substring(ghs2 FROM length(code_sci)+1) END) ,
+                        'prefix', code_sci,
                         'area', geom_area,
                         'side', SQRT(geom_area),
-                        'base', base
+                        'base', osmc.string_base(p_base)
                         ))
                     )::jsonb)
               FROM
              (
               SELECT geom, ghs,
-                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(ghs,p_jurisd_base_id)  ELSE ghs  END AS ghs2,
-                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(code,p_jurisd_base_id) ELSE code END AS code2,
+                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(ghs,p_jurisd_id) ELSE ghs  END AS ghs2,
+                  CASE WHEN p_base = 18 THEN osmc.encode_16h1c(c.code,p_jurisd_id) ELSE c.code END AS code_sci,
                   ST_Area(geom) AS geom_area
                 FROM osmc.ggeohash_GeomsFromVarbit(
                       c.bit_string,p_l0code,false,p_srid,16,
@@ -631,8 +699,8 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
     ) m
     ON TRUE
 
-    WHERE
-    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
+    WHERE CASE WHEN p_jurisd_id = 4 THEN c.code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
+
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.osmcode_encode_scientific(float,float,int,int,int,int,int[],varbit,int,boolean)
   IS 'Encodes geometry to OSMcode.'
@@ -656,9 +724,9 @@ CREATE or replace FUNCTION osmc.encode_scientific_br(
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'BR'),76,FALSE)
+      ,bbox,osmc.extract_L0bits8(cbits),76,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 76::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 1::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_br(geometry(POINT),float,int)
   IS 'Encodes geometry to BR Scientific OSMcode.'
@@ -683,9 +751,9 @@ CREATE or replace FUNCTION osmc.encode_scientific_cm(
         WHEN p_grid_size > 0 AND u = 35 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'CM'),120,FALSE)
+      ,bbox,osmc.extract_L0bits4(cbits),120,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 120::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 3::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_cm(geometry(POINT),float,int)
   IS 'Encodes geometry to CM Scientific OSMcode.'
@@ -710,9 +778,9 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'CO'),170,FALSE)
+      ,bbox,osmc.extract_L0bits4(cbits),170,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 170::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 2::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_co(geometry(POINT),float,int)
   IS 'Encodes geometry to CO Scientific OSMcode.'
@@ -737,9 +805,9 @@ CREATE or replace FUNCTION osmc.encode_scientific_uy(
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'UY'),858,FALSE)
+      ,bbox,osmc.extract_L0bits8(cbits),858,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 858::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 4::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_uy(geometry(POINT),float,int)
   IS 'Encodes geometry to UY Scientific OSMcode.'
@@ -764,9 +832,9 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'EC'),218,FALSE)
+      ,bbox,osmc.extract_L0bits8(cbits),218,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 218::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 5::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_ec(geometry(POINT),float,int)
   IS 'Encodes geometry to EC Scientific OSMcode.'
@@ -785,7 +853,7 @@ CREATE or replace FUNCTION osmc.encode_short_code(
     (
         SELECT isolabel_ext, ( cindex || (CASE WHEN length(p_codebits) = length(cbits) THEN '' ELSE substring(p_code FROM length(kx_prefix)+1) END) ) AS short_code
         FROM osmc.coverage r
-        WHERE is_country IS FALSE AND (cbits)::bit(14) = p_codebits::bit(14)
+        WHERE is_country IS FALSE AND (cbits)::bit(12) = p_codebits::bit(12)
         AND CASE WHEN p_isolabel_ext IS NULL THEN TRUE ELSE isolabel_ext = p_isolabel_ext END
         AND CASE WHEN is_contained IS FALSE THEN ST_Contains(geom,p_geom) ELSE TRUE END
         AND cbits # substring(p_codebits FROM 1 FOR length(cbits)) = substring(0::bit(40) FROM 1 FOR length(cbits))
@@ -809,7 +877,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
   p_grid_size  int     DEFAULT 32,
   p_bbox       int[]   DEFAULT array[0,0,0,0],
   p_l0code     varbit  DEFAULT b'0',
-  p_jurisd_base_id int DEFAULT 170,
+  p_jurisd_id  int     DEFAULT 170,
   p_lonlat     boolean DEFAULT false, -- false: latLon, true: lonLat
   p_type       int     DEFAULT 1, -- 1: isolabel_ext~short_code, 2: ISO-jurisd_local_id~short_code
   p_isolabel_ext text  DEFAULT NULL
@@ -818,38 +886,32 @@ CREATE or replace FUNCTION osmc.encode_postal(
     SELECT jsonb_build_object(
       'type', 'FeatureCollection',
       'features',
-          jsonb_agg(ST_AsGeoJSONb(ST_Transform_resilient(geom_cell,4326,0.005),8,0,null,
+          jsonb_agg(ST_AsGeoJSONb(ST_Transform_resilient(c.geom,4326,0.005),8,0,null,
               jsonb_strip_nulls(jsonb_build_object(
-                  'code', code,
+                  'code', upper(natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(c.codebits,p_jurisd_id),'32nvu')),
                   'short_code', CASE p_type WHEN 2 THEN split_part(isolabel_ext,'-',1) || '-' || jurisd_local_id ELSE isolabel_ext END || '~' || short_code,
-                  'area', ST_Area(geom_cell),
-                  'side', SQRT(ST_Area(geom_cell)),
+                  'area', ST_Area(c.geom),
+                  'side', SQRT(ST_Area(c.geom)),
                   'base', '32nvu',
                   'jurisd_local_id', jurisd_local_id,
-                  'jurisd_base_id', p_jurisd_base_id,
+                  'jurisd_base_id', p_jurisd_id,
                   'isolabel_ext', p_isolabel_ext,
                   'isolabel_ext_abbrev', (SELECT abbrev FROM mvwjurisdiction_synonym_default_abbrev x WHERE x.isolabel_ext = p_isolabel_ext),
-                  'scientic_code', CASE
-                                    WHEN p_jurisd_base_id IN (76,868)
-                                    THEN osmc.encode_16h1c(natcod.vbit_to_baseh(codebits,16,true),p_jurisd_base_id)
-                                    ELSE                   natcod.vbit_to_baseh(codebits,16,true)
-                                    END
+                  'scientic_code', CASE WHEN p_base IN (18) THEN osmc.encode_16h1c(c.code,p_jurisd_id) ELSE c.code END
                   ))
           )::jsonb)
       )
     FROM
     (
-      SELECT bit_string,
-      ggeohash.draw_cell_bybox(ggeohash.decode_box2(bit_string,p_bbox,p_lonlat),false,p_srid) AS geom_cell,
-      upper(natcod.vbit_to_strstd( osmc.vbit_from_16h_to_vbit_b32nvu((p_l0code || bit_string),p_jurisd_base_id),'32nvu')) AS code,
-      p_l0code||bit_string AS codebits
-      FROM ggeohash.encode3(p_x,p_y,p_bbox,p_bit_length,p_lonlat) r(bit_string)
+      SELECT bit_string, natcod.vbit_to_baseh((CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END),16,true) AS code,
+      (CASE WHEN p_bit_length = 0 THEN p_l0code ELSE p_l0code||bit_string END) AS codebits, geom
+      FROM  osmc.encode(p_x,p_y,p_bit_length,p_srid,p_bbox,p_l0code,p_lonlat)
     ) c
     -- responsável pelo código logístico
-    LEFT JOIN LATERAL ( SELECT * FROM osmc.encode_short_code(c.code,p_jurisd_base_id::bit(10)||codebits,p_isolabel_ext,p_geom) ) t ON TRUE
+    LEFT JOIN LATERAL ( SELECT * FROM osmc.encode_short_code(upper(natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(c.codebits,p_jurisd_id),'32nvu')),p_jurisd_id::bit(8)||codebits,p_isolabel_ext,p_geom) ) t ON TRUE
 
     WHERE
-    CASE WHEN p_jurisd_base_id = 858 THEN code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
+    CASE WHEN p_jurisd_id = 4 THEN c.code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal(geometry(POINT),float,float,int,int,int,int[],varbit,int,boolean,int,text)
   IS 'Encodes geometry to Logistic AFAcode.'
@@ -871,9 +933,9 @@ CREATE or replace FUNCTION osmc.encode_postal_br(
         WHEN u = 40 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'BR'),76,FALSE,1,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits8(cbits),76,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 76::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 1::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_br(geometry(POINT),float,int,text)
   IS 'Encodes geometry to BR Logistic AFAcode.'
@@ -895,9 +957,9 @@ CREATE or replace FUNCTION osmc.encode_postal_cm(
         WHEN u = 40 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'CM'),120,FALSE,1,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits4(cbits),120,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 120::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 3::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_cm(geometry(POINT),float,int,text)
   IS 'Encodes geometry to CM Logistic AFAcode.'
@@ -919,9 +981,9 @@ CREATE or replace FUNCTION osmc.encode_postal_co(
         WHEN u = 40 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'CO'),170,FALSE,2,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits4(cbits),170,FALSE,2,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 170::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 2::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_co(geometry(POINT),float,int,text)
   IS 'Encodes geometry to CO Logistic AFAcode.'
@@ -944,9 +1006,9 @@ CREATE or replace FUNCTION osmc.encode_postal_uy(
         WHEN u > 31 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'UY'),858,FALSE,1,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits8(cbits),858,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 858::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 4::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_uy(geometry(POINT),float,int,text)
   IS 'Encodes geometry to UY Logistic AFAcode.'
@@ -969,9 +1031,9 @@ CREATE or replace FUNCTION osmc.encode_postal_ec(
         WHEN u > 35 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits(cbits,'EC'),218,TRUE,1,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits8(cbits),218,TRUE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
-    WHERE is_country IS TRUE AND cbits::bit(10) = 218::bit(10) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+    WHERE is_country IS TRUE AND extract_jurisdbits(cbits) = 5::bit(8) AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_postal_ec(geometry(POINT),float,int,text)
   IS 'Encodes geometry to EC Logistic AFAcode.'
@@ -1039,52 +1101,52 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.cell_relate(varbit)
   IS 'Returns bit(4) with the relative position of the cell in L0.'
 ;
--- EXPLAIN ANALYZE SELECT osmc.cell_relate(osmc.vbit_withoutL0(natcod.baseh_to_vbit(osmc.decode_16h1c('6aaar','BR'),16),'BR'));
+-- EXPLAIN ANALYZE SELECT osmc.cell_relate(osmc.vbit_withoutL0(natcod.baseh_to_vbit(osmc.decode_16h1c('6aaar',1)),1));
 
 CREATE or replace FUNCTION osmc.neighborsl0(
   p_x    varbit, -- only L0 bits
-  p_iso  text DEFAULT NULL
+  p_iso  int DEFAULT NULL
 ) RETURNS varbit[] AS $f$
     SELECT
-        CASE                                               -- [North, North East, East, South East, South, South West, West, North West]
-            WHEN p_iso = 'BR' AND p_x = b'00000000' THEN ARRAY[NULL,NULL,b'00000001',b'00000101',b'00000100',NULL,NULL,NULL]
-            WHEN p_iso = 'BR' AND p_x = b'00000001' THEN ARRAY[NULL,NULL,b'00000010',b'00000110',b'00000101',b'00000100',b'00000000',NULL]
-            WHEN p_iso = 'BR' AND p_x = b'00000010' THEN ARRAY[NULL,NULL,b'00000011',b'00000111',b'00000110',b'00000101',b'00000001',NULL]
-            WHEN p_iso = 'BR' AND p_x = b'00000011' THEN ARRAY[NULL,NULL,b'00010000',b'00001000',b'00000111',b'00000110',b'00000010',NULL]
-            WHEN p_iso = 'BR' AND p_x = b'00000100' THEN ARRAY[b'00000000',b'00000001',b'00000101',b'00001001',NULL,NULL,NULL,NULL]
-            WHEN p_iso = 'BR' AND p_x = b'00000101' THEN ARRAY[b'00000001',b'00000010',b'00000110',b'00001010',b'00001001',NULL,b'00000100',b'00000000']
-            WHEN p_iso = 'BR' AND p_x = b'00000110' THEN ARRAY[b'00000010',b'00000011',b'00000111',b'00001011',b'00001010',b'00001001',b'00000101',b'00000001']
-            WHEN p_iso = 'BR' AND p_x = b'00000111' THEN ARRAY[b'00000011',b'00010000',b'00001000',b'00010001',b'00001011',b'00001010',b'00000110',b'00000010']
-            WHEN p_iso = 'BR' AND p_x = b'00001000' THEN ARRAY[b'00010000',NULL,NULL,NULL,b'00010001',b'00001011',b'00000111',b'00000011']
-            WHEN p_iso = 'BR' AND p_x = b'00001001' THEN ARRAY[b'00000101',b'00000110',b'00001010',b'00001101',b'00001100',NULL,NULL,b'00000100']
-            WHEN p_iso = 'BR' AND p_x = b'00001010' THEN ARRAY[b'00000110',b'00000111',b'00001011',b'00001110',b'00001101',b'00001100',b'00001001',b'00000101']
-            WHEN p_iso = 'BR' AND p_x = b'00001011' THEN ARRAY[b'00000111',b'00001000',b'00010001',NULL,b'00001110',b'00001101',b'00001010',b'00000110']
-            WHEN p_iso = 'BR' AND p_x = b'00001100' THEN ARRAY[b'00001001',b'00001010',b'00001101',b'00001111',NULL,NULL,NULL,NULL]
-            WHEN p_iso = 'BR' AND p_x = b'00001101' THEN ARRAY[b'00001010',b'00001011',b'00001110',NULL,b'00001111',NULL,b'00001100',b'00001001']
-            WHEN p_iso = 'BR' AND p_x = b'00001110' THEN ARRAY[b'00001011',b'00010001',NULL,NULL,NULL,b'00001111',b'00001101',b'00001010']
-            WHEN p_iso = 'BR' AND p_x = b'00001111' THEN ARRAY[b'00001101',b'00001110',NULL,NULL,NULL,NULL,NULL,b'00001100']
-            WHEN p_iso = 'BR' AND p_x = b'00010000' THEN ARRAY[NULL,NULL,NULL,NULL,b'00001000',b'00000111',b'00000011',NULL]
-            WHEN p_iso = 'BR' AND p_x = b'00010001' THEN ARRAY[b'00001000',NULL,NULL,NULL,NULL,b'00001110',b'00001011',b'00000111']
-            WHEN p_iso = 'CO' AND p_x = b'0000'     THEN ARRAY[NULL,NULL,b'0010',b'0111',b'0101',NULL,NULL,NULL]
-            WHEN p_iso = 'CO' AND p_x = b'0001'     THEN ARRAY[b'0100',b'0110',b'0011',NULL,NULL,NULL,NULL,NULL]
-            WHEN p_iso = 'CO' AND p_x = b'0010'     THEN ARRAY[NULL,NULL,b'1111',b'1101',b'0111',b'0101',b'0000',NULL]
-            WHEN p_iso = 'CO' AND p_x = b'0011'     THEN ARRAY[b'0110',b'1100',b'1001',b'1000',NULL,NULL,b'0001',b'0100']
-            WHEN p_iso = 'CO' AND p_x = b'0100'     THEN ARRAY[b'0101',b'0111',b'0110',b'0011',b'0001',NULL,NULL,NULL]
-            WHEN p_iso = 'CO' AND p_x = b'0101'     THEN ARRAY[b'0000',b'0010',b'0111',b'0110',b'0100',NULL,NULL,NULL]
-            WHEN p_iso = 'CO' AND p_x = b'0110'     THEN ARRAY[b'0111',b'1101',b'1100',b'1001',b'0011',b'0001',b'0100',b'0101']
-            WHEN p_iso = 'CO' AND p_x = b'0111'     THEN ARRAY[b'0010',b'1111',b'1101',b'1100',b'0110',b'0100',b'0101',b'0000']
-            WHEN p_iso = 'CO' AND p_x = b'1000'     THEN ARRAY[b'1001',b'1011',b'1010',NULL,NULL,NULL,NULL,b'0011']
-            WHEN p_iso = 'CO' AND p_x = b'1001'     THEN ARRAY[b'1100',b'1110',b'1011',b'1010',b'1000',NULL,b'0011',b'0110']
-            WHEN p_iso = 'CO' AND p_x = b'1010'     THEN ARRAY[b'1011',NULL,NULL,NULL,NULL,NULL,b'1000',b'1001']
-            WHEN p_iso = 'CO' AND p_x = b'1011'     THEN ARRAY[b'1110',NULL,NULL,NULL,b'1010',b'1000',b'1001',b'1100']
-            WHEN p_iso = 'CO' AND p_x = b'1100'     THEN ARRAY[b'1101',NULL,b'1110',b'1011',b'1001',b'0011',b'0110',b'0111']
-            WHEN p_iso = 'CO' AND p_x = b'1101'     THEN ARRAY[b'1111',NULL,NULL,b'1110',b'1100',b'0110',b'0111',b'0010']
-            WHEN p_iso = 'CO' AND p_x = b'1110'     THEN ARRAY[NULL,NULL,NULL,NULL,b'1011',b'1001',b'1100',b'1101']
-            WHEN p_iso = 'CO' AND p_x = b'1111'     THEN ARRAY[NULL,NULL,NULL,NULL,b'1101',b'0111',b'0010',NULL]
+        CASE                                            -- [North, North East, East, South East, South, South West, West, North West]
+            WHEN p_iso = 1 AND p_x = b'00000000' THEN ARRAY[NULL,NULL,b'00000001',b'00000101',b'00000100',NULL,NULL,NULL]
+            WHEN p_iso = 1 AND p_x = b'00000001' THEN ARRAY[NULL,NULL,b'00000010',b'00000110',b'00000101',b'00000100',b'00000000',NULL]
+            WHEN p_iso = 1 AND p_x = b'00000010' THEN ARRAY[NULL,NULL,b'00000011',b'00000111',b'00000110',b'00000101',b'00000001',NULL]
+            WHEN p_iso = 1 AND p_x = b'00000011' THEN ARRAY[NULL,NULL,b'00010000',b'00001000',b'00000111',b'00000110',b'00000010',NULL]
+            WHEN p_iso = 1 AND p_x = b'00000100' THEN ARRAY[b'00000000',b'00000001',b'00000101',b'00001001',NULL,NULL,NULL,NULL]
+            WHEN p_iso = 1 AND p_x = b'00000101' THEN ARRAY[b'00000001',b'00000010',b'00000110',b'00001010',b'00001001',NULL,b'00000100',b'00000000']
+            WHEN p_iso = 1 AND p_x = b'00000110' THEN ARRAY[b'00000010',b'00000011',b'00000111',b'00001011',b'00001010',b'00001001',b'00000101',b'00000001']
+            WHEN p_iso = 1 AND p_x = b'00000111' THEN ARRAY[b'00000011',b'00010000',b'00001000',b'00010001',b'00001011',b'00001010',b'00000110',b'00000010']
+            WHEN p_iso = 1 AND p_x = b'00001000' THEN ARRAY[b'00010000',NULL,NULL,NULL,b'00010001',b'00001011',b'00000111',b'00000011']
+            WHEN p_iso = 1 AND p_x = b'00001001' THEN ARRAY[b'00000101',b'00000110',b'00001010',b'00001101',b'00001100',NULL,NULL,b'00000100']
+            WHEN p_iso = 1 AND p_x = b'00001010' THEN ARRAY[b'00000110',b'00000111',b'00001011',b'00001110',b'00001101',b'00001100',b'00001001',b'00000101']
+            WHEN p_iso = 1 AND p_x = b'00001011' THEN ARRAY[b'00000111',b'00001000',b'00010001',NULL,b'00001110',b'00001101',b'00001010',b'00000110']
+            WHEN p_iso = 1 AND p_x = b'00001100' THEN ARRAY[b'00001001',b'00001010',b'00001101',b'00001111',NULL,NULL,NULL,NULL]
+            WHEN p_iso = 1 AND p_x = b'00001101' THEN ARRAY[b'00001010',b'00001011',b'00001110',NULL,b'00001111',NULL,b'00001100',b'00001001']
+            WHEN p_iso = 1 AND p_x = b'00001110' THEN ARRAY[b'00001011',b'00010001',NULL,NULL,NULL,b'00001111',b'00001101',b'00001010']
+            WHEN p_iso = 1 AND p_x = b'00001111' THEN ARRAY[b'00001101',b'00001110',NULL,NULL,NULL,NULL,NULL,b'00001100']
+            WHEN p_iso = 1 AND p_x = b'00010000' THEN ARRAY[NULL,NULL,NULL,NULL,b'00001000',b'00000111',b'00000011',NULL]
+            WHEN p_iso = 1 AND p_x = b'00010001' THEN ARRAY[b'00001000',NULL,NULL,NULL,NULL,b'00001110',b'00001011',b'00000111']
+            WHEN p_iso = 2 AND p_x = b'0000'     THEN ARRAY[NULL,NULL,b'0010',b'0111',b'0101',NULL,NULL,NULL]
+            WHEN p_iso = 2 AND p_x = b'0001'     THEN ARRAY[b'0100',b'0110',b'0011',NULL,NULL,NULL,NULL,NULL]
+            WHEN p_iso = 2 AND p_x = b'0010'     THEN ARRAY[NULL,NULL,b'1111',b'1101',b'0111',b'0101',b'0000',NULL]
+            WHEN p_iso = 2 AND p_x = b'0011'     THEN ARRAY[b'0110',b'1100',b'1001',b'1000',NULL,NULL,b'0001',b'0100']
+            WHEN p_iso = 2 AND p_x = b'0100'     THEN ARRAY[b'0101',b'0111',b'0110',b'0011',b'0001',NULL,NULL,NULL]
+            WHEN p_iso = 2 AND p_x = b'0101'     THEN ARRAY[b'0000',b'0010',b'0111',b'0110',b'0100',NULL,NULL,NULL]
+            WHEN p_iso = 2 AND p_x = b'0110'     THEN ARRAY[b'0111',b'1101',b'1100',b'1001',b'0011',b'0001',b'0100',b'0101']
+            WHEN p_iso = 2 AND p_x = b'0111'     THEN ARRAY[b'0010',b'1111',b'1101',b'1100',b'0110',b'0100',b'0101',b'0000']
+            WHEN p_iso = 2 AND p_x = b'1000'     THEN ARRAY[b'1001',b'1011',b'1010',NULL,NULL,NULL,NULL,b'0011']
+            WHEN p_iso = 2 AND p_x = b'1001'     THEN ARRAY[b'1100',b'1110',b'1011',b'1010',b'1000',NULL,b'0011',b'0110']
+            WHEN p_iso = 2 AND p_x = b'1010'     THEN ARRAY[b'1011',NULL,NULL,NULL,NULL,NULL,b'1000',b'1001']
+            WHEN p_iso = 2 AND p_x = b'1011'     THEN ARRAY[b'1110',NULL,NULL,NULL,b'1010',b'1000',b'1001',b'1100']
+            WHEN p_iso = 2 AND p_x = b'1100'     THEN ARRAY[b'1101',NULL,b'1110',b'1011',b'1001',b'0011',b'0110',b'0111']
+            WHEN p_iso = 2 AND p_x = b'1101'     THEN ARRAY[b'1111',NULL,NULL,b'1110',b'1100',b'0110',b'0111',b'0010']
+            WHEN p_iso = 2 AND p_x = b'1110'     THEN ARRAY[NULL,NULL,NULL,NULL,b'1011',b'1001',b'1100',b'1101']
+            WHEN p_iso = 2 AND p_x = b'1111'     THEN ARRAY[NULL,NULL,NULL,NULL,b'1101',b'0111',b'0010',NULL]
         END
     ;
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.neighborsl0(varbit,text)
+COMMENT ON FUNCTION osmc.neighborsl0(varbit,int)
   IS 'Returns the neighbors of a cell L0 in varbit array, in order: North, North East, East, South East, South, South West, West, North West.'
 ;
 
@@ -1096,17 +1158,17 @@ CREATE or replace VIEW osmc.vw01neighborsl0 AS
   (
       SELECT
           c.isolabel_ext,
-          osmc.extract_L0bits(c.cbits,c.isolabel_ext) AS l0bits,
+          osmc.extract_L0bits(c.cbits,c.int_country_id) AS l0bits,
           CASE
-          WHEN c.isolabel_ext IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh( osmc.extract_L0bits(  c.cbits,c.isolabel_ext),16),(c.cbits::bit(10))::int)
-          ELSE                                  natcod.vbit_to_baseh( osmc.extract_L0bits(  c.cbits,c.isolabel_ext),16)
+          WHEN c.int_country_id IN (1,4) THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_L0bits(c.cbits,c.int_country_id),16),c.int_country_id)
+          ELSE                                                  natcod.vbit_to_baseh(osmc.extract_L0bits(c.cbits,c.int_country_id),16)
           END AS code,
           c.bbox AS bbox
           ,
-          osmc.extract_L0bits(  d.cbits,c.isolabel_ext) AS nl0bits,
+          osmc.extract_L0bits(  d.cbits,c.int_country_id) AS nl0bits,
           CASE
-          WHEN c.isolabel_ext IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh( osmc.extract_L0bits(  d.cbits,c.isolabel_ext),16),(c.cbits::bit(10))::int)
-          ELSE                                  natcod.vbit_to_baseh( osmc.extract_L0bits(  d.cbits,c.isolabel_ext),16)
+          WHEN c.int_country_id IN (1,4) THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_L0bits(d.cbits,c.int_country_id),16),c.int_country_id)
+          ELSE                                                  natcod.vbit_to_baseh(osmc.extract_L0bits(d.cbits,c.int_country_id),16)
           END AS ncode,
           d.bbox AS nbbox
       FROM
@@ -1124,7 +1186,7 @@ CREATE or replace VIEW osmc.vw01neighborsl0 AS
               END AS nbbox
           FROM
           (
-              SELECT cbits, bbox, isolabel_ext, unnest(ARRAY[1,2,3,4,5,6,7,8]) AS npos
+              SELECT cbits, bbox, isolabel_ext, unnest(ARRAY[1,2,3,4,5,6,7,8]) AS npos, c.int_country_id AS int_country_id
               FROM osmc.coverage c
               WHERE c.is_country IS TRUE
           ) r
@@ -1138,7 +1200,6 @@ CREATE or replace VIEW osmc.vw01neighborsl0 AS
       ON c.nbbox = d.bbox
       ORDER BY 1, 2, 3, c.npos
   ) v
-  -- WHERE isolabel_ext IN ('BR','CO')
   GROUP BY isolabel_ext, l0bits
   ORDER BY isolabel_ext, l0bits
 ;
@@ -1146,7 +1207,7 @@ CREATE or replace VIEW osmc.vw01neighborsl0 AS
 CREATE or replace FUNCTION osmc.neighbors(
   p_x    varbit, -- cell bits
   p_l0   varbit, -- L0 bits
-  p_iso  text
+  p_iso  int
 ) RETURNS varbit[] AS $f$
     SELECT array_agg(n_L0 || n_cell) AS neighbors
     FROM unnest
@@ -1176,23 +1237,23 @@ COMMENT ON FUNCTION osmc.neighbors(varbit,varbit,text)
 
 CREATE or replace FUNCTION osmc.neighbors(
   p_x    varbit, -- with L0 bits
-  p_iso  text,
+  p_iso  int,
   p_base int DEFAULT 16
 ) RETURNS varbit[] AS $wrap$
-    SELECT osmc.neighbors(osmc.vbit_withoutL0(p_x,p_iso,p_base),osmc.extract_L0bits_from_cellbits(p_x,p_iso),p_iso);
+    SELECT osmc.neighbors(osmc.vbit_withoutL0(p_x,p_iso),osmc.extract_L0bits(0::bit(8)||p_x,p_iso),p_iso);
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.neighbors(varbit,text,int)
   IS 'Returns the neighbors of a cell in varbit array (with L0 bits), in order: North, North East, East, South East, South, South West, West, North West.'
 ;
--- EXPLAIN ANALYZE SELECT osmc.neighbors(natcod.baseh_to_vbit(osmc.decode_16h1c('6aaar','BR'),16),'BR');
+-- EXPLAIN ANALYZE SELECT osmc.neighbors(natcod.baseh_to_vbit(osmc.decode_16h1c('6aaar','BR')),'BR');
 
 CREATE or replace FUNCTION osmc.neighbors_test(
   p_x    text[],
-  p_iso  text,
-  p_jurisd_base_id int,
+  p_iso  int,
+  p_jurisd_id int,
   p_base int DEFAULT 16
 ) RETURNS TABLE (prefix text, neighbors text[]) AS $f$
-    SELECT prefix, array_agg(CASE WHEN p_base = 18 THEN osmc.encode_16h1c(natcod.vbit_to_baseh(ng,16),p_jurisd_base_id) ELSE natcod.vbit_to_baseh(ng,16) END)
+    SELECT prefix, array_agg(CASE WHEN p_base = 18 THEN osmc.encode_16h1c(natcod.vbit_to_baseh(ng,16),p_jurisd_id) ELSE natcod.vbit_to_baseh(ng,16) END)
     FROM
     (
         SELECT prefix, unnest(osmc.neighbors(natcod.baseh_to_vbit(CASE WHEN p_base = 18 THEN osmc.decode_16h1c(prefix,p_iso) ELSE prefix END,16),p_iso,16)) AS ng
@@ -1208,12 +1269,12 @@ COMMENT ON FUNCTION osmc.neighbors_test(text[],text,int,int)
 
 CREATE or replace FUNCTION osmc.neighbors_test(
   p_x    text,
-  p_iso  text,
-  p_jurisd_base_id int,
+  p_iso  int,
+  p_jurisd_id int,
   p_base int DEFAULT 16
 ) RETURNS TABLE (prefix text, neighbors text[]) AS $f$
     SELECT *
-    FROM osmc.neighbors_test(ARRAY[p_x],p_iso,p_jurisd_base_id,p_base)
+    FROM osmc.neighbors_test(ARRAY[p_x],p_iso,p_jurisd_id,p_base)
     ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.neighbors_test(text[],text,int,int)
@@ -1230,22 +1291,32 @@ CREATE or replace FUNCTION osmc.hBig_to_afa_sci(
 ) RETURNS text AS $f$
 SELECT
   CASE x::bit(8)
-    WHEN b'00000001' THEN 'BR+'
+    WHEN b'00000001' THEN 'BR+' || osmc.encode_16h1c(natcod.vbit_to_baseh(substring(x from 9),16,true),76)
     -- ELSE
   END
-  ||
-  CASE x::bit(8)
-    WHEN b'00000001' THEN osmc.encode_16h1c(natcod.vbit_to_baseh((x<<8)::bit(48),16,true),76)
-    -- ELSE
-  END
-
 FROM natcod.hBig_to_vBit(p_b) x
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.hBig_to_afa_sci(bigint)
   IS ''
 ;
--- SELECT osmc.hBig_to_afa_sci(37151654485894456);
+-- SELECT osmc.hBig_to_afa_sci(37996971798872115); -- BR+dfc16cd39s
+
+CREATE or replace FUNCTION osmc.varbit_to_afa_sci(
+  p_code varbit,
+  p_jurisd_id  int
+) RETURNS text AS $f$
+SELECT
+  CASE
+    WHEN p_jurisd_id IN (76,868) THEN osmc.encode_16h1c(natcod.vbit_to_baseh(p_code,16,true),76)
+    ELSE                                                natcod.vbit_to_baseh(p_code,16,true)
+  END
+;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.varbit_to_afa_sci(varbit,int)
+  IS ''
+;
+-- SELECT osmc.varbit_to_afa_sci(b'0000110111111100000101101100110100111001100',76); -- BR+dfc16cd39s
 
 
 CREATE or replace FUNCTION osmc.afa_sci_to_hBig(
@@ -1263,4 +1334,72 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.afa_sci_to_hBig(text,text)
   IS ''
 ;
--- SELECT osmc.afa_sci_to_hBig('BR+7fa7740e64a');
+-- SELECT osmc.afa_sci_to_hBig('BR+dfc16cd39s'); -- 37996971798872115
+
+
+
+
+CREATE or replace FUNCTION osmc.afa_sci_to_hBig(
+  p_code varbit,
+  p_iso  text
+) RETURNS bigint AS $f$
+SELECT
+  CASE p_iso
+    WHEN 'BR' THEN natcod.vBit_to_hBig( 1::bit(8) || p_code)
+    -- ELSE
+  END
+;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.afa_sci_to_hBig(varbit,text)
+  IS ''
+;
+-- SELECT natcod.hBig_to_vBit(37996971798872115); -- 000000010000110111111100000101101100110100111001100
+-- SELECT osmc.afa_sci_to_hBig(b'0000110111111100000101101100110100111001100','BR'); -- 37996971798872115
+
+
+
+-- hBig <-> AFAcodes logistics:
+
+CREATE or replace FUNCTION osmc.hBig_to_afa_log(
+  p_b bigint
+) RETURNS text AS $f$
+SELECT natcod.b32nvu_to_vbit(natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(substring(x from 9),76),'32nvu')) AS code
+FROM natcod.hBig_to_vBit(p_b) x
+;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.hBig_to_afa_log(bigint)
+  IS ''
+;
+-- SELECT osmc.hBig_to_afa_log(37996971798872115); -- BR+dfc16cd39s
+
+
+CREATE or replace FUNCTION osmc.afa_log_to_hBig(
+   p_code text,
+   p_separator text DEFAULT '\~'
+) RETURNS bigint AS $f$
+  SELECT
+  (
+    SELECT
+      natcod.vBit_to_hBig(((CASE split_part(co.isolabel_ext,'-',1)
+        WHEN 'BR' THEN b'00000001' -- extrair do cbits
+        -- WHEN 'CO' THEN b'00000010'
+        -- WHEN 'CM' THEN
+        -- WHEN 'EC' THEN
+        -- WHEN 'UY' THEN
+      END) || osmc.extract_cellbits(cbits) || natcod.b32nvu_to_vbit(upper(substring(u[2],2)))))
+    FROM osmc.coverage co
+    WHERE is_country IS FALSE AND co.isolabel_ext = (str_geocodeiso_decode(u[1]))[1]
+      AND cindex = substring(upper(u[2]),1,1)
+  )
+  FROM regexp_split_to_array(p_code,p_separator) u
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.afa_log_to_hBig(text,text)
+  IS 'Decode Postal OSMcode.'
+;
+-- EXPLAIN ANALYZE SELECT osmc.afa_log_to_hBig('BR-SP-SaoPaulo~MDUGD'); -- 37996971798872115
+
+-- SELECT osmc.afa_log_to_hBig('BR-SP-SaoPaulo~MWMP'); -- 37996973917863982
+-- SELECT osmc.afa_sci_to_hBig('BR+dfc17c9dm'); -- 37996973917863982
+-- SELECT osmc.hBig_to_afa_sci(37996973917863982); -- BR+dfc17c9dm
+-- SELECT natcod.hBig_to_vBit(37996973917863982); -- 00000001 00001101111111000001011111001001110101
+-- SELECT osmc.afa_sci_to_hBig(b'00001101111111000001011111001001110101','BR'); --37996973917863982
