@@ -622,7 +622,7 @@ CREATE or replace FUNCTION osmc.encode(
   SELECT bit_string, ggeohash.draw_cell_bybox((CASE WHEN p_bit_length = 0 THEN p_bbox ELSE ggeohash.decode_box2(bit_string,p_bbox,p_lonlat) END),false,p_srid) AS geom
   FROM ggeohash.encode3(p_x,p_y,p_bbox,p_bit_length,p_lonlat) r(bit_string)
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode(float,float,int,int,int[],varbit,int,boolean)
+COMMENT ON FUNCTION osmc.encode(float,float,int,int,int[],varbit,boolean)
   IS ''
 ;
 
@@ -648,7 +648,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
                   'area', ST_Area(c.geom),
                   'side', SQRT(ST_Area(c.geom)),
                   'base', osmc.string_base(p_base),
-                  'jurisd_base_id',p_jurisd_id ***
+                  'jurisd_base_id',p_jurisd_id -- ***
                   ))
           )::jsonb) || m.subcells
         )
