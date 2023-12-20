@@ -1255,7 +1255,7 @@ CREATE or replace FUNCTION osmc.neighbors(
                           WHEN b'0100' THEN ARRAY[p_l0,p_l0,p_l0,p_l0,p_l0,nL0[7],nL0[7],nL0[7]]
                           WHEN b'0110' THEN ARRAY[nL0[1],nL0[1],p_l0,p_l0,p_l0,nL0[7],nL0[7],nL0[8]]
                       END
-                  FROM osmc.neighborsl0(p_L0,p_iso) t(nL0)
+                  FROM osmc.neighborsl0(p_l0,p_iso) t(nL0)
               )
           ) r(n_cell,n_L0)
     ;
@@ -1269,12 +1269,12 @@ CREATE or replace FUNCTION osmc.neighbors(
   p_iso  int,
   p_base int DEFAULT 16
 ) RETURNS varbit[] AS $wrap$
-    SELECT osmc.neighbors(osmc.vbit_withoutL0(p_x,p_iso),osmc.extract_L0bits(0::bit(8)||p_x),p_iso);
+    SELECT osmc.neighbors(osmc.vbit_withoutL0(p_x,p_iso),osmc.extract_L0bits(p_iso::bit(8)||p_x),p_iso);
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.neighbors(varbit,int,int)
   IS 'Returns the neighbors of a cell in varbit array (with L0 bits), in order: North, North East, East, South East, South, South West, West, North West.'
 ;
--- EXPLAIN ANALYZE SELECT osmc.neighbors(natcod.baseh_to_vbit(osmc.decode_16h1c('6aaar','BR')),'BR');
+-- EXPLAIN ANALYZE SELECT osmc.neighbors(natcod.baseh_to_vbit(osmc.decode_16h1c('6aaar',1),16),1);
 
 CREATE or replace FUNCTION osmc.neighbors_test(
   p_x    text[],
@@ -1294,7 +1294,7 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.neighbors_test(text[],int,int,int)
   IS ''
 ;
--- SELECT * FROM osmc.neighbors_test(ARRAY['6aaar', '6000r', '6fabr', '6fffv', '67ffv', '6555m', '6000h', '6040h', '62aah', '6911m', '6fafr', '8a24v', '0aaar'],'BR',76,18);
+-- SELECT * FROM osmc.neighbors_test(ARRAY['6aaar', '6000r', '6fabr', '6fffv', '67ffv', '6555m', '6000h', '6040h', '62aah', '6911m', '6fafr', '8a24v', '0aaar'],1,1,18);
 
 CREATE or replace FUNCTION osmc.neighbors_test(
   p_x    text,
@@ -1309,7 +1309,7 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.neighbors_test(text[],int,int,int)
   IS ''
 ;
--- SELECT neighbors FROM osmc.neighbors_test('6aaar','BR',76,18);
+-- SELECT neighbors FROM osmc.neighbors_test('6aaar',1,1,18);
 
 
 ------------------
@@ -1320,7 +1320,11 @@ CREATE or replace FUNCTION osmc.hBig_to_afa_sci(
 ) RETURNS text AS $f$
 SELECT
   CASE x::bit(8)
-    WHEN b'00000001' THEN 'BR+' || osmc.encode_16h1c(natcod.vbit_to_baseh(substring(x from 9),16,true),76)
+    WHEN b'00000001' THEN 'BR+' || osmc.encode_16h1c(natcod.vbit_to_baseh(substring(x from 9),16,true),1)
+    WHEN b'00000010' THEN 'CO+' || natcod.vbit_to_baseh(substring(x from 9),16,true)
+    WHEN b'00000011' THEN 'CM+' || natcod.vbit_to_baseh(substring(x from 9),16,true)
+    WHEN b'00000101' THEN 'EC+' || natcod.vbit_to_baseh(substring(x from 9),16,true)
+    WHEN b'00000100' THEN 'UY+' || osmc.encode_16h1c(natcod.vbit_to_baseh(substring(x from 9),16,true),4)
     -- ELSE
   END
 FROM natcod.hBig_to_vBit(p_b) x
@@ -1329,7 +1333,7 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.hBig_to_afa_sci(bigint)
   IS 'Convert afa_id into scientific representation, intelligible by humans.'
 ;
--- SELECT osmc.hBig_to_afa_sci(37996971798872115); -- BR+dfc16cd39s
+-- SELECT osmc.hBig_to_afa_sci(37996971798872115); -- BR+dfc16cd39S
 
 CREATE or replace FUNCTION osmc.afa_sci_to_hBig(
   p_code text,
@@ -1338,6 +1342,10 @@ CREATE or replace FUNCTION osmc.afa_sci_to_hBig(
 SELECT
   CASE u[1]
     WHEN 'BR' THEN natcod.vBit_to_hBig(1::bit(8)||(natcod.baseh_to_vbit(osmc.decode_16h1c(u[2],1),16)))
+    WHEN 'UY' THEN natcod.vBit_to_hBig(4::bit(8)||(natcod.baseh_to_vbit(osmc.decode_16h1c(u[2],4),16)))
+    WHEN 'CO' THEN natcod.vBit_to_hBig(2::bit(8)||(natcod.baseh_to_vbit(u[2],16)))
+    WHEN 'CM' THEN natcod.vBit_to_hBig(3::bit(8)||(natcod.baseh_to_vbit(u[2],16)))
+    WHEN 'EC' THEN natcod.vBit_to_hBig(5::bit(8)||(natcod.baseh_to_vbit(u[2],16)))
     -- ELSE
   END
 FROM regexp_split_to_array(p_code,p_separator) u
@@ -1351,27 +1359,31 @@ COMMENT ON FUNCTION osmc.afa_sci_to_hBig(text,text)
 
 -- hBig <-> AFAcodes logistics:
 
-/*
 CREATE or replace FUNCTION osmc.hBig_to_afa_log(
   p_b bigint
 ) RETURNS text AS $f$
-SELECT
-  CASE x::bit(8)
-    WHEN b'00000001' THEN natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(substring(x from 9),1),'32nvu')
-    -- WHEN 'CO' THEN b'00000010'
-    -- WHEN 'CM' THEN b'00000011'
-    -- WHEN 'EC' THEN b'00000101'
-    -- WHEN 'UY' THEN b'00000100'
-    -- ELSE
-  END AS code
+SELECT CASE WHEN x::bit(8) = b'00000010' THEN 'CO-' || t.jurisd_local_id ELSE t.isolabel_ext END || '~' || t.short_code
 FROM natcod.hBig_to_vBit(p_b) x
+
+LEFT JOIN LATERAL
+(
+  SELECT isolabel_ext, cbits,
+    ggeohash.draw_cell_bybox(ggeohash.decode_box2(osmc.vbit_withoutL0((osmc.cbits_b32nvu_to_16h(substring(x from 9),x::bit(8)::int)),x::bit(8)::int),bbox, CASE WHEN x::bit(8)::int = 5 THEN TRUE ELSE FALSE END),false,ST_SRID(geom)) AS geom
+  FROM osmc.coverage
+  WHERE is_country IS TRUE
+    AND osmc.extract_jurisdbits(cbits)::bit(8) = x::bit(8)
+    AND ( ( osmc.cbits_16h_to_b32nvu(osmc.extract_L0bits(cbits),x::bit(8)::int) # substring(x from 9)::bit(5) ) = 0::bit(5) )
+) v
+  ON TRUE
+
+-- responsável pelo código logístico
+LEFT JOIN LATERAL ( SELECT * FROM osmc.encode_short_code(natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(substring(x from 9),x::bit(8)::int),'32nvu'),x,null,ST_Centroid(v.geom)) ) t ON TRUE
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.hBig_to_afa_log(bigint)
   IS 'Convert afa_id into logistics representation, intelligible by humans.'
 ;
--- natcod.b32nvu_to_vbit( SELECT osmc.hBig_to_afa_log(37996971798872115); --
-*/
+-- SELECT osmc.hBig_to_afa_log(37996971798872115); -- BR-SP-SaoPaulo~MDUGD
 
 CREATE or replace FUNCTION osmc.afa_log_to_hBig(
    p_code text,
@@ -1379,14 +1391,7 @@ CREATE or replace FUNCTION osmc.afa_log_to_hBig(
 ) RETURNS bigint AS $f$
   SELECT
   (
-    SELECT
-      natcod.vBit_to_hBig(((CASE split_part(co.isolabel_ext,'-',1)
-        WHEN 'BR' THEN b'00000001' -- extrair do cbits
-        -- WHEN 'CO' THEN b'00000010'
-        -- WHEN 'CM' THEN b'00000011'
-        -- WHEN 'EC' THEN b'00000101'
-        -- WHEN 'UY' THEN b'00000100'
-      END) || osmc.extract_cellbits(cbits) || natcod.b32nvu_to_vbit(upper(substring(u[2],2)))))
+    SELECT natcod.vBit_to_hBig( cbits || natcod.b32nvu_to_vbit(upper(substring(u[2],2))) )
     FROM osmc.coverage co
     WHERE is_country IS FALSE AND co.isolabel_ext = (str_geocodeiso_decode(u[1]))[1]
       AND cindex = substring(upper(u[2]),1,1)
