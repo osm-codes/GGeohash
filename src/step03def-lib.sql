@@ -664,6 +664,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
   p_bbox       int[]   DEFAULT array[0,0,0,0],
   p_l0code     varbit  DEFAULT b'0',
   p_jurisd_id  int     DEFAULT 170,
+  p_jurisd_base_id int DEFAULT 170,
   p_lonlat     boolean DEFAULT false  -- false: latLon, true: lonLat
 ) RETURNS jsonb AS $f$
     SELECT jsonb_build_object(
@@ -676,7 +677,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
                   'area', ST_Area(c.geom),
                   'side', SQRT(ST_Area(c.geom)),
                   'base', osmc.string_base(p_base),
-                  'jurisd_base_id',p_jurisd_id -- ***
+                  'jurisd_base_id', p_jurisd_base_id
                   ))
           )::jsonb) || m.subcells
         )
@@ -752,7 +753,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_br(
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits8(cbits),76,FALSE)
+      ,bbox,osmc.extract_L0bits8(cbits),1,76,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 1 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -779,7 +780,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_cm(
         WHEN p_grid_size > 0 AND u = 35 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits4(cbits),120,FALSE)
+      ,bbox,osmc.extract_L0bits4(cbits),3,120,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 3 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -806,7 +807,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_co(
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits4(cbits),170,FALSE)
+      ,bbox,osmc.extract_L0bits4(cbits),2,170,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 2 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -833,7 +834,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_uy(
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits8(cbits),858,FALSE)
+      ,bbox,osmc.extract_L0bits8(cbits),4,858,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 4 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -860,7 +861,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits8(cbits),218,FALSE)
+      ,bbox,osmc.extract_L0bits8(cbits),5,218,FALSE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 5 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -906,6 +907,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
   p_bbox       int[]   DEFAULT array[0,0,0,0],
   p_l0code     varbit  DEFAULT b'0',
   p_jurisd_id  int     DEFAULT 170,
+  p_jurisd_base_id int DEFAULT 170,
   p_lonlat     boolean DEFAULT false, -- false: latLon, true: lonLat
   p_type       int     DEFAULT 1, -- 1: isolabel_ext~short_code, 2: ISO-jurisd_local_id~short_code
   p_isolabel_ext text  DEFAULT NULL
@@ -921,7 +923,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
                   'side', SQRT(ST_Area(c.geom)),
                   'base', '32nvu',
                   'jurisd_local_id', jurisd_local_id,
-                  'jurisd_base_id', p_jurisd_id,
+                  'jurisd_base_id', p_jurisd_base_id,
                   'isolabel_ext', p_isolabel_ext,
                   'isolabel_ext_abbrev', (SELECT abbrev FROM mvwjurisdiction_synonym_default_abbrev x WHERE x.isolabel_ext = p_isolabel_ext),
                   'scientic_code', CASE WHEN split_part(p_isolabel_ext,'-',1) IN ('BR','UY') THEN osmc.encode_16h1c(c.code,p_jurisd_id) ELSE c.code END
@@ -960,7 +962,7 @@ CREATE or replace FUNCTION osmc.encode_postal_br(
         WHEN u = 40 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits8(cbits),76,FALSE,1,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits8(cbits),1,76,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 1 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -984,7 +986,7 @@ CREATE or replace FUNCTION osmc.encode_postal_cm(
         WHEN u = 40 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits4(cbits),120,FALSE,1,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits4(cbits),3,120,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 3 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -1008,7 +1010,7 @@ CREATE or replace FUNCTION osmc.encode_postal_co(
         WHEN u = 40 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits4(cbits),170,FALSE,2,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits4(cbits),2,170,FALSE,2,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 2 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -1033,7 +1035,7 @@ CREATE or replace FUNCTION osmc.encode_postal_uy(
         WHEN u > 31 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits8(cbits),858,FALSE,1,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits8(cbits),4,858,FALSE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 4 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -1058,7 +1060,7 @@ CREATE or replace FUNCTION osmc.encode_postal_ec(
         WHEN u > 35 THEN 0
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits8(cbits),218,TRUE,1,p_isolabel_ext)
+      ,bbox,osmc.extract_L0bits8(cbits),5,218,TRUE,1,p_isolabel_ext)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 5 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
