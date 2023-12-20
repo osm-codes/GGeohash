@@ -1327,26 +1327,9 @@ FROM natcod.hBig_to_vBit(p_b) x
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.hBig_to_afa_sci(bigint)
-  IS ''
+  IS 'Convert afa_id into scientific representation, intelligible by humans.'
 ;
 -- SELECT osmc.hBig_to_afa_sci(37996971798872115); -- BR+dfc16cd39s
-
-CREATE or replace FUNCTION osmc.varbit_to_afa_sci(
-  p_code varbit,
-  p_jurisd_id  int
-) RETURNS text AS $f$
-SELECT
-  CASE
-    WHEN p_jurisd_id IN (76,868) THEN osmc.encode_16h1c(natcod.vbit_to_baseh(p_code,16,true),76)
-    ELSE                                                natcod.vbit_to_baseh(p_code,16,true)
-  END
-;
-$f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.varbit_to_afa_sci(varbit,int)
-  IS ''
-;
--- SELECT osmc.varbit_to_afa_sci(b'0000110111111100000101101100110100111001100',76); -- BR+dfc16cd39s
-
 
 CREATE or replace FUNCTION osmc.afa_sci_to_hBig(
   p_code text,
@@ -1361,27 +1344,34 @@ FROM regexp_split_to_array(p_code,p_separator) u
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.afa_sci_to_hBig(text,text)
-  IS ''
+  IS 'Convert scientific representation to afa_id.'
 ;
 -- SELECT osmc.afa_sci_to_hBig('BR+dfc16cd39s'); -- 37996971798872115
--- SELECT natcod.hBig_to_vBit(37996971798872115); -- 000000010000110111111100000101101100110100111001100
--- SELECT osmc.afa_sci_to_hBig(b'0000110111111100000101101100110100111001100','BR'); -- 37996971798872115
 
 
 -- hBig <-> AFAcodes logistics:
 
+/*
 CREATE or replace FUNCTION osmc.hBig_to_afa_log(
   p_b bigint
 ) RETURNS text AS $f$
-SELECT natcod.b32nvu_to_vbit(natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(substring(x from 9),76),'32nvu')) AS code
+SELECT
+  CASE x::bit(8)
+    WHEN b'00000001' THEN natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(substring(x from 9),1),'32nvu')
+    -- WHEN 'CO' THEN b'00000010'
+    -- WHEN 'CM' THEN b'00000011'
+    -- WHEN 'EC' THEN b'00000101'
+    -- WHEN 'UY' THEN b'00000100'
+    -- ELSE
+  END AS code
 FROM natcod.hBig_to_vBit(p_b) x
 ;
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.hBig_to_afa_log(bigint)
-  IS ''
+  IS 'Convert afa_id into logistics representation, intelligible by humans.'
 ;
--- SELECT osmc.hBig_to_afa_log(37996971798872115); -- BR+dfc16cd39s
-
+-- natcod.b32nvu_to_vbit( SELECT osmc.hBig_to_afa_log(37996971798872115); --
+*/
 
 CREATE or replace FUNCTION osmc.afa_log_to_hBig(
    p_code text,
@@ -1393,9 +1383,9 @@ CREATE or replace FUNCTION osmc.afa_log_to_hBig(
       natcod.vBit_to_hBig(((CASE split_part(co.isolabel_ext,'-',1)
         WHEN 'BR' THEN b'00000001' -- extrair do cbits
         -- WHEN 'CO' THEN b'00000010'
-        -- WHEN 'CM' THEN
-        -- WHEN 'EC' THEN
-        -- WHEN 'UY' THEN
+        -- WHEN 'CM' THEN b'00000011'
+        -- WHEN 'EC' THEN b'00000101'
+        -- WHEN 'UY' THEN b'00000100'
       END) || osmc.extract_cellbits(cbits) || natcod.b32nvu_to_vbit(upper(substring(u[2],2)))))
     FROM osmc.coverage co
     WHERE is_country IS FALSE AND co.isolabel_ext = (str_geocodeiso_decode(u[1]))[1]
@@ -1404,12 +1394,6 @@ CREATE or replace FUNCTION osmc.afa_log_to_hBig(
   FROM regexp_split_to_array(p_code,p_separator) u
 $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.afa_log_to_hBig(text,text)
-  IS 'Decode Postal OSMcode.'
+  IS 'Convert logistics representation to afa_id.'
 ;
 -- EXPLAIN ANALYZE SELECT osmc.afa_log_to_hBig('BR-SP-SaoPaulo~MDUGD'); -- 37996971798872115
-
--- SELECT osmc.afa_log_to_hBig('BR-SP-SaoPaulo~MWMP'); -- 37996973917863982
--- SELECT osmc.afa_sci_to_hBig('BR+dfc17c9dm'); -- 37996973917863982
--- SELECT osmc.hBig_to_afa_sci(37996973917863982); -- BR+dfc17c9dm
--- SELECT natcod.hBig_to_vBit(37996973917863982); -- 00000001 00001101111111000001011111001001110101
--- SELECT osmc.afa_sci_to_hBig(b'00001101111111000001011111001001110101','BR'); --37996973917863982
