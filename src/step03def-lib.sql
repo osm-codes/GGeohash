@@ -1402,3 +1402,43 @@ COMMENT ON FUNCTION osmc.afa_log_to_hBig(text,text)
   IS 'Convert logistics representation to afa_id.'
 ;
 -- EXPLAIN ANALYZE SELECT osmc.afa_log_to_hBig('BR-SP-SaoPaulo~MDUGD'); -- 37996971798872115
+
+----------------------
+
+CREATE or replace FUNCTION osmc.grid_gen(
+  c     int, -- coluna
+  l     int, -- linha
+  x0    int, -- referencia de inicio do eixo x [x0,y0]
+  y0    int, -- referencia de inicio do eixo y [x0,y0]
+  s     int, -- lado da célula
+  srid  int, -- srid
+  isolabel text,
+  type  int DEFAULT 0 -- 0: grid l x c
+                      -- 1: grid L0 coverage
+                      -- 2: grid L0 coverage intersects
+) RETURNS TABLE (gid int, ij text, ij2 text, ij_int int, geom geometry) AS $f$
+  SELECT *
+  FROM
+  (
+    SELECT  ROW_NUMBER() OVER(ORDER BY j DESC, i ASC) as gid,
+            lpad((j*10+i)::text,2,'0') AS ij,
+            j::text || i::text AS ij2,
+            (j*10+i) AS ij_int,
+            CASE
+              WHEN type IN (0, 1) THEN osmc.ij_to_geom(i,j,x0,y0,s,srid)
+              WHEN type IN (   2) THEN osmc.ij_to_geom(i,j,x0,y0,s,srid)
+            END AS geom
+    FROM generate_series(0,c-1) AS j, generate_series(0,l-1) AS i
+  ) a
+  WHERE
+    CASE
+      WHEN type IN (1,2) THEN ST_Intersects(a.geom, (SELECT ST_Transform(g.geom,srid) FROM optim.vw01full_jurisdiction_geom g WHERE isolabel_ext=isolabel) )
+      ELSE TRUE
+    END
+;
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.grid_gen
+  IS 'Generates grids based on the default values for each country.'
+;
+
+-- SELECT * FROM osmc.grid_gen(6,4,-1745000,170000,262144,102022,'CM');
