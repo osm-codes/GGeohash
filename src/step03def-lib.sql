@@ -1413,21 +1413,29 @@ CREATE or replace FUNCTION osmc.grid_gen(
   s     int, -- lado da célula
   srid  int, -- srid
   isolabel text,
-  type  int DEFAULT 0 -- 0: grid l x c
-                      -- 1: grid L0 coverage
-                      -- 2: grid L0 coverage intersects
-) RETURNS TABLE (gid int, ij text, ij2 text, ij_int int, geom geometry) AS $f$
-  SELECT *
+  type  int DEFAULT 0, -- 0: grid l x c
+                       -- 1: grid L0 coverage
+                       -- 2: grid L0 coverage intersects
+  srid_out int DEFAULT 4326 -- srid
+) RETURNS TABLE (gid int, ij text, ij_int int, code text, geom geometry) AS $f$
+  SELECT  gid, ij, ij_int,
+          CASE
+            WHEN type IN (  1) THEN NULL
+            WHEN type IN (1,2) THEN lower(natcod.vbit_to_baseh(gid::bit(4),16))
+          END AS code,
+          ST_Transform(
+          CASE
+            WHEN type IN (0, 1) THEN geom
+            WHEN type IN (   2) THEN ST_Intersection(geom,(SELECT ST_Transform(g.geom,srid) FROM optim.vw01full_jurisdiction_geom g WHERE isolabel_ext=isolabel))
+          END
+          ,srid_out) AS geom
   FROM
   (
     SELECT  ROW_NUMBER() OVER(ORDER BY j DESC, i ASC) as gid,
-            lpad((j*10+i)::text,2,'0') AS ij,
-            j::text || i::text AS ij2,
+            --lpad((j*10+i)::text,2,'0') AS ij,
+            j::text || i::text AS ij,
             (j*10+i) AS ij_int,
-            CASE
-              WHEN type IN (0, 1) THEN osmc.ij_to_geom(i,j,x0,y0,s,srid)
-              WHEN type IN (   2) THEN osmc.ij_to_geom(i,j,x0,y0,s,srid)
-            END AS geom
+            osmc.ij_to_geom(i,j,x0,y0,s,srid) AS geom
     FROM generate_series(0,c-1) AS j, generate_series(0,l-1) AS i
   ) a
   WHERE
@@ -1442,3 +1450,12 @@ COMMENT ON FUNCTION osmc.grid_gen
 ;
 
 -- SELECT * FROM osmc.grid_gen(6,4,-1745000,170000,262144,102022,'CM');
+
+
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,-1745000,170000,262144,102022,''CM'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,-1745000,170000,262144,102022,''CM'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,-1745000,170000,262144,102022,''CM'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
+
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
