@@ -1503,14 +1503,14 @@ CREATE TABLE osmc.ttype_decode_scientific_absolute_geoms(
   geom geometry,
   geom4326 geometry
 );
-COMMENT ON TABLE osmc.tflike_decode_scientific_absolute_geoms
+COMMENT ON TABLE osmc.ttype_decode_scientific_absolute_geoms
   IS 'Type-table, only for the return-type of decode_scientific_absolute_geoms().'
 ;
-COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.gid_vbit IS 'PK. The complete hierarchical geocode, with country prefix.';
-COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.code_b16h IS 'Geocode, withoutout the country prefix.';
--- COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.is_border IS 'Flag, true when cell at reference-jurisdiction border';
-COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.geom IS 'Original geometri, in the native SRID projection.';
-COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.geom4326 IS 'The geometry with no projection, by ST_Transform_resilient().';
+COMMENT ON COLUMN osmc.ttype_decode_scientific_absolute_geoms.gid_vbit IS 'PK. The complete hierarchical geocode, with country prefix.';
+COMMENT ON COLUMN osmc.ttype_decode_scientific_absolute_geoms.code_b16h IS 'Geocode, withoutout the country prefix.';
+-- COMMENT ON COLUMN osmc.ttype_decode_scientific_absolute_geoms.is_border IS 'Flag, true when cell at reference-jurisdiction border';
+COMMENT ON COLUMN osmc.ttype_decode_scientific_absolute_geoms.geom IS 'Original geometri, in the native SRID projection.';
+COMMENT ON COLUMN osmc.ttype_decode_scientific_absolute_geoms.geom4326 IS 'The geometry with no projection, by ST_Transform_resilient().';
 
 
 -------- 
@@ -1520,20 +1520,25 @@ DROP FUNCTION if exists osmc.decode_scientific_absolute_geoms
 CREATE FUNCTION osmc.decode_scientific_absolute_geoms(
    p_code text, -- um ou mais (separados por virgula) afaCodes científicos separados por virgula
    p_iso text,  -- pais de contextualização do afaCode.
-   p_base integer DEFAULT 18,  -- detecta antes se usa gambiarra se falsa célula ... não devia precisar.
-   p_resilience_size_fraction real DEFAULT 0.005 -- or null for no-resilience
-) RETURNS osmc.ttype_decode_scientific_absolute_geoms
-  language SQL IMMUTABLE
+   p_base integer DEFAULT 18  -- detecta antes se usa gambiarra se falsa célula ... não devia precisar.
+) RETURNS TABLE (
+	code text,
+	area real,
+	side real,
+	truncated_code text,
+	base text,
+	geom geometry,
+	geom4326 geometry
+) language SQL IMMUTABLE
 AS $f$
     SELECT
-        codebits,
         TRANSLATE(code_tru,'gqhmrvjknpstzy','GQHMRVJKNPSTZY') as code,
-        -- ST_Area(v.geom) as area, = 
-        -- SQRT(ST_Area(v.geom)) as side,
+        ST_Area(v.geom) as area,
+        SQRT(ST_Area(v.geom)) as side,
         truncated_code,
-        -- osmc.string_base(p_base) as base,
+        osmc.string_base(p_base) as base,
         v.geom,
-        CASE WHEN p_resilience_size_fraction IS NULL THEN ST_Transform(v.geom,4326) ELSE ST_Transform_resilient(v.geom,4326,p_resilience_size_fraction) END as geom4326
+        ST_Transform_resilient(v.geom,4326,0.005) as geom4326
     FROM (
       SELECT DISTINCT code16h,
 
@@ -1565,7 +1570,7 @@ AS $f$
         ELSE natcod.baseh_to_vbit(code16h,16)
       END AS codebits,
 
-      code, up_iso
+      code,up_iso
 
       FROM
       (
@@ -1579,12 +1584,7 @@ AS $f$
     ) c,
     LATERAL
     (
-      SELECT cbits,
-        ggeohash.draw_cell_bybox(
-          ggeohash.decode_box2( osmc.vbit_withoutL0(codebits,c.up_iso), bbox, CASE WHEN c.up_iso='EC' THEN TRUE ELSE FALSE END),
-          false,
-          ST_SRID(geom)
-        ) AS geom
+      SELECT ggeohash.draw_cell_bybox(ggeohash.decode_box2(osmc.vbit_withoutL0(codebits,c.up_iso),bbox, CASE WHEN c.up_iso='EC' THEN TRUE ELSE FALSE END),false,ST_SRID(geom)) AS geom
       FROM osmc.coverage
       WHERE is_country IS TRUE AND isolabel_ext = c.up_iso -- cobertura nacional apenas
         AND
@@ -1593,9 +1593,12 @@ AS $f$
         ELSE                            ( ( osmc.extract_L0bits(cbits,up_iso) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
         END
     ) v
+
     WHERE
     CASE WHEN up_iso = 'UY' THEN c.code16h NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE END
+
 $f$;
+-- comment!?
 
 DROP FUNCTION if exists osmc.L0cover_br_geoms
 ;
