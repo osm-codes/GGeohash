@@ -1522,6 +1522,7 @@ CREATE FUNCTION osmc.decode_scientific_absolute_geoms(
    p_iso text,  -- pais de contextualização do afaCode.
    p_base integer DEFAULT 18  -- detecta antes se usa gambiarra se falsa célula ... não devia precisar.
 ) RETURNS TABLE (
+	cbits varbit,
 	code text,
 	area real,
 	side real,
@@ -1532,6 +1533,7 @@ CREATE FUNCTION osmc.decode_scientific_absolute_geoms(
 ) language SQL IMMUTABLE
 AS $f$
     SELECT
+	codebits,
         TRANSLATE(code_tru,'gqhmrvjknpstzy','GQHMRVJKNPSTZY') as code,
         ST_Area(v.geom) as area,
         SQRT(ST_Area(v.geom)) as side,
@@ -1579,7 +1581,7 @@ AS $f$
                   WHEN p_base = 18 THEN osmc.decode_16h1c(code,upper(p_iso))
                   ELSE code
                 END AS code16h
-        FROM regexp_split_to_table(lower(p_code),',') code
+        FROM regexp_split_to_table(lower(trim(p_code,'{}')),',') code
       ) u
     ) c,
     LATERAL
