@@ -1459,3 +1459,238 @@ COMMENT ON FUNCTION osmc.grid_gen
 -- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
 -- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
 -- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
+
+-----------------------------------------------------------------------
+-- New tables and functions, for grids on QGIS and reports
+
+--- REPORTS:
+CREATE SCHEMA osmc_report;
+
+CREATE VIEW osmc_report.v001_osmc_coverage_l0_list AS
+ SELECT isolabel_ext ||' = '||(b'0000000000000000000000'||cb10)::bit(32)::int ||' = '||cb10 as pais,
+       is_contained,
+       cb10::text||'.'||cb_suffix as cbits, natcod.vbit_to_baseh(cb_suffix,16) as b16,
+       status,  round(st_area(geom)/1000000.0) as area_km2
+ FROM (
+  select *, substring(cbits,1,10) as cb10, substring(cbits,11) as cb_suffix
+  from osmc.coverage
+ ) t 
+ WHERE is_country ORDER BY 1,2,cbits
+;
+
+DROP view if exists osmc_report.v002_osmc_coverage_l0_geoms
+; 
+CREATE VIEW report.v002_osmc_coverage_l0_geoms AS
+ select row_number() OVER (ORDER BY cbits) AS gid, *,
+        isolabel_ext ||'+'||cbits_b16 as afacode
+ from (
+  select isolabel_ext,cbits,
+    natcod.vbit_to_baseh(substring(cbits,11)::bit varying, 16) AS cbits_b16,
+    geom_srid4326
+  from osmc.coverage where is_country and isolabel_ext IN ('BR','CO','CM')
+ ) t
+;
+------
+-- HELPER TABLES
+
+------
+DROP TABLE osmc.ttype_decode_scientific_absolute_geoms CASCADE
+;
+CREATE TABLE osmc.ttype_decode_scientific_absolute_geoms(
+  gid_vbit       varbit,
+  code_b16h      text,
+  -- não é genérico. is_border      boolean,
+  geom geometry,
+  geom4326 geometry
+);
+COMMENT ON TABLE osmc.tflike_decode_scientific_absolute_geoms
+  IS 'Type-table, only for the return-type of decode_scientific_absolute_geoms().'
+;
+COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.gid_vbit IS 'PK. The complete hierarchical geocode, with country prefix.';
+COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.code_b16h IS 'Geocode, withoutout the country prefix.';
+-- COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.is_border IS 'Flag, true when cell at reference-jurisdiction border';
+COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.geom IS 'Original geometri, in the native SRID projection.';
+COMMENT ON COLUMN osmc.tflike_decode_scientific_absolute_geoms.geom4326 IS 'The geometry with no projection, by ST_Transform_resilient().';
+
+
+-------- 
+-- FUNCTIONS:
+DROP FUNCTION if exists osmc.decode_scientific_absolute_geoms
+;
+CREATE FUNCTION osmc.decode_scientific_absolute_geoms(
+   p_code text, -- um ou mais (separados por virgula) afaCodes científicos separados por virgula
+   p_iso text,  -- pais de contextualização do afaCode.
+   p_base integer DEFAULT 18,  -- detecta antes se usa gambiarra se falsa célula ... não devia precisar.
+   p_resilience_size_fraction real DEFAULT 0.005 -- or null for no-resilience
+) RETURNS osmc.ttype_decode_scientific_absolute_geoms
+  language SQL IMMUTABLE
+AS $f$
+    SELECT
+        codebits,
+        TRANSLATE(code_tru,'gqhmrvjknpstzy','GQHMRVJKNPSTZY') as code,
+        -- ST_Area(v.geom) as area, = 
+        -- SQRT(ST_Area(v.geom)) as side,
+        truncated_code,
+        -- osmc.string_base(p_base) as base,
+        v.geom,
+        CASE WHEN p_resilience_size_fraction IS NULL THEN ST_Transform(v.geom,4326) ELSE ST_Transform_resilient(v.geom,4326,p_resilience_size_fraction) END as geom4326
+    FROM (
+      SELECT DISTINCT code16h,
+
+      -- trunca
+      CASE
+        WHEN p_base <> 18 AND length(code16h) > 12 AND up_iso IN ('BR')           THEN substring(code16h,1,12)
+        WHEN p_base <> 18 AND length(code16h) > 11 AND up_iso IN ('EC','CO','UY') THEN substring(code16h,1,11)
+        WHEN p_base <> 18 AND length(code16h) > 10 AND up_iso IN ('CM')           THEN substring(code16h,1,10)
+        WHEN p_base =  18 AND length(code)    > 11 AND up_iso IN ('BR')           THEN substring(code,1,11)
+        WHEN p_base =  18 AND length(code)    > 10 AND up_iso IN ('UY')           THEN substring(code,1,10)
+        ELSE (CASE WHEN p_base=18 THEN code ELSE code16h END)
+      END AS code_tru,
+
+      -- flag
+      CASE
+        WHEN p_base <> 18 AND length(code16h) > 12 AND up_iso IN ('BR')           THEN TRUE
+        WHEN p_base <> 18 AND length(code16h) > 11 AND up_iso IN ('EC','CO','UY') THEN TRUE
+        WHEN p_base <> 18 AND length(code16h) > 10 AND up_iso IN ('CM')           THEN TRUE
+        WHEN p_base =  18 AND length(code)    > 11 AND up_iso IN ('BR')           THEN TRUE
+        WHEN p_base =  18 AND length(code)    > 10 AND up_iso IN ('UY')           THEN TRUE
+        ELSE NULL
+      END AS truncated_code,
+
+      -- vbit code16h
+      CASE
+        WHEN length(code16h) > 12 AND up_iso IN ('BR')           THEN natcod.baseh_to_vbit(substring(code16h,1,12),16)
+        WHEN length(code16h) > 11 AND up_iso IN ('EC','CO','UY') THEN natcod.baseh_to_vbit(substring(code16h,1,11),16)
+        WHEN length(code16h) > 10 AND up_iso IN ('CM')           THEN natcod.baseh_to_vbit(substring(code16h,1,10),16)
+        ELSE natcod.baseh_to_vbit(code16h,16)
+      END AS codebits,
+
+      code, up_iso
+
+      FROM
+      (
+        SELECT code, upper(p_iso) AS up_iso,
+                CASE
+                  WHEN p_base = 18 THEN osmc.decode_16h1c(code,upper(p_iso))
+                  ELSE code
+                END AS code16h
+        FROM regexp_split_to_table(lower(p_code),',') code
+      ) u
+    ) c,
+    LATERAL
+    (
+      SELECT cbits,
+        ggeohash.draw_cell_bybox(
+          ggeohash.decode_box2( osmc.vbit_withoutL0(codebits,c.up_iso), bbox, CASE WHEN c.up_iso='EC' THEN TRUE ELSE FALSE END),
+          false,
+          ST_SRID(geom)
+        ) AS geom
+      FROM osmc.coverage
+      WHERE is_country IS TRUE AND isolabel_ext = c.up_iso -- cobertura nacional apenas
+        AND
+        CASE
+        WHEN up_iso IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits,'CO')   # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígito base16h
+        ELSE                            ( ( osmc.extract_L0bits(cbits,up_iso) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+        END
+    ) v
+    WHERE
+    CASE WHEN up_iso = 'UY' THEN c.code16h NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE END
+$f$;
+
+DROP FUNCTION if exists osmc.L0cover_br_geoms
+;
+CREATE FUNCTION osmc.L0cover_br_geoms() 
+RETURNS TABLE (
+    gid  int,
+	cbits         varbit,
+	b16_label     text,
+	prefix        text,
+	isolabel_ext  text,
+	bbox          integer[],
+	is_contained  boolean,
+	geom          geometry,
+	geom_cell     geometry,
+	geom_srid4326 geometry
+) language SQL AS $f$
+  SELECT row_number() over() as gid,
+         jurisd_base_id::bit(10) || (natcod.baseh_to_vbit(prefix,16)) as cbits,
+         CASE WHEN left(prefix,1)='0' THEN substring(prefix,2,1) ELSE prefix END as b16_label,
+         prefix,-- natcod.vbit_to_baseh(substring(cbits,11),16) as b16_label,
+         'BR', bbox,
+         CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN TRUE ELSE FALSE END,
+         geom,
+         geom_cell,
+         ST_Transform(geom,4326)
+  FROM (
+      SELECT 76 AS jurisd_base_id, prefix, bbox,geom_country,
+         ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,952019),geom_country) AS geom,
+         ggeohash.draw_cell_bybox(bbox,false,952019) AS geom_cell
+      FROM unnest(
+            '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11}'::text[],
+            array[20,21,22,23,15,16,17,18,19,11,12,13,6,7,8,2,24,14]
+      ) t(prefix,quadrant),
+      LATERAL (
+         SELECT osmc.ij_to_bbox(quadrant%5,quadrant/5,2715000,6727000,1048576)
+      ) u(bbox),
+      LATERAL (
+         SELECT ST_Transform(geom,952019)
+         FROM optim.vw01full_jurisdiction_geom g
+         WHERE g.isolabel_ext = 'BR' AND jurisd_base_id = 76
+      ) r(geom_country)
+      WHERE quadrant IS NOT NULL
+  ) y
+
+   UNION ALL
+
+   SELECT 18+(row_number() over()) as gid,
+        76::bit(10) || (natcod.baseh_to_vbit('0'||lower(code),16)) as cbits,
+        code as b16_label,
+        '0'||lower(code)  as prefix,
+        'BR', NULL as bbox,  false as is_contained,
+        NULL as geom, -- st_intersect(geom_BR,geom_cell)
+	geom as geom_cell, geom4326
+   FROM osmc.decode_scientific_absolute_geoms('fT,fY,fP,fN','BR',18)
+
+  ORDER BY 1
+$f$;
+COMMENT ON FUNCTION osmc.L0cover_br_geoms()
+  IS 'L0cover BR from configs, for ingest (gid<=18) into osmc.coverage using osmc.l0cover_upsert().'
+;
+
+-- for natcod below see https://git.AddressForAll.org/WhitePaper01/blob/main/sql/prepare0-binCodes.sql
+
+DROP FUNCTION IF EXISTS osmc.cover_cbits
+;
+CREATE FUNCTION osmc.cover_cbits(
+  p_level real,    -- last lavel to return
+  p_l0_list_b16 text[] default '{0,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f}'::text[], -- the L0 list of codes.
+  p_non_recursive boolean default true
+) RETURNS varbit[] language SQL IMMUTABLE
+AS $f$
+ SELECT array_agg(cbits ORDER BY cbits) 
+ FROM (
+   SELECT natcod.baseh_to_vbit(lower(c),16) FROM unnest(p_l0_list_b16) l0(c)
+   WHERE p_level=0
+  UNION ALL
+   SELECT l0.cbits||t.cbits
+   FROM natcod.generate_vbit_series( (p_level*2)::int, p_non_recursive ) t(cbits),
+        (SELECT natcod.baseh_to_vbit(c,16) as cbits FROM unnest(p_l0_list_b16) t2(c)) l0  
+   WHERE p_level>0
+ ) t2 (cbits)
+$f$;
+COMMENT ON FUNCTION osmc.cover_cbits
+  IS 'Generate series of cbits of a country defined by p_l0_list_b16.'
+;
+
+CREATE FUNCTION osmc.cover_scientific_codes(
+  p_level real,    -- last lavel to return
+  p_l0_list_b16 text[] default '{0,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f}'::text[], -- the L0 list of codes.
+  p_non_recursive boolean default true
+) RETURNS text[] language SQL IMMUTABLE
+AS $wrap$
+   SELECT array_agg( natcod.vbit_to_baseh(cbits,16) )
+   FROM unnest( osmc.cover_cbits($1,$2,$3) ) t(cbits)
+$wrap$;
+COMMENT ON FUNCTION osmc.cover_cbits
+  IS 'Generate series of b16h scientific codes of a country defined by p_l0_list_b16. Wrap for cover_cbits()'
+;
