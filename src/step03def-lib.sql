@@ -1540,7 +1540,7 @@ AS $f$
         truncated_code,
         osmc.string_base(p_base) as base,
         v.geom,
-        ST_Transform_resilient(v.geom,4326,0.005) as geom4326
+        ST_Transform_resilient(v.geom,4326,0.005,0.00000005) as geom4326
     FROM (
       SELECT DISTINCT code16h,
 
