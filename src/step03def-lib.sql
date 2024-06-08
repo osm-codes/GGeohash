@@ -1665,13 +1665,14 @@ COMMENT ON FUNCTION osmc.L0cover_br_geoms()
   IS 'L0cover BR from configs, for ingest (gid<=18) into osmc.coverage using osmc.l0cover_upsert().'
 ;
 
--- for natcod below see https://git.AddressForAll.org/WhitePaper01/blob/main/sql/prepare0-binCodes.sql
+-- MUST MIGRATE TO NATCOD!!!
+--  where? for last version of Natcod see https://git.AddressForAll.org/WhitePaper01/blob/main/sql/prepare0-binCodes.sql
 
-DROP FUNCTION IF EXISTS osmc.cover_cbits
+DROP FUNCTION IF EXISTS osmc.cover_to_cbits CASCADE
 ;
-CREATE FUNCTION osmc.cover_cbits(
+CREATE FUNCTION osmc.cover_to_cbits( -- future natcod.b16h_parents_to_vbits().. Wrap for parents_to_children ou vbit_generate_family_from_b16h(), b16h_generate_family()
   p_level real,    -- last lavel to return
-  p_l0_list_b16 text[] default '{0,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f}'::text[], -- the L0 list of codes.
+  p_l0_list_b16 text[] default '{0,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f}'::text[], -- Natcod parents. In AFAcodes the L0 list of scientific codes.
   p_non_recursive boolean default true
 ) RETURNS varbit[] language SQL IMMUTABLE
 AS $f$
@@ -1682,23 +1683,72 @@ AS $f$
   UNION ALL
    SELECT l0.cbits||t.cbits
    FROM natcod.generate_vbit_series( (p_level*2)::int, p_non_recursive ) t(cbits),
-        (SELECT natcod.baseh_to_vbit(c,16) as cbits FROM unnest(p_l0_list_b16) t2(c)) l0  
+        (SELECT natcod.baseh_to_vbit(lower(c),16) as cbits FROM unnest(p_l0_list_b16) t2(c)) l0  
    WHERE p_level>0
  ) t2 (cbits)
 $f$;
-COMMENT ON FUNCTION osmc.cover_cbits
+COMMENT ON FUNCTION osmc.cover_to_cbits
   IS 'Generate series of cbits of a country defined by p_l0_list_b16.'
 ;
 
-CREATE FUNCTION osmc.cover_scientific_codes(
+DROP FUNCTION IF EXISTS osmc.cover_to_b16h_codes;
+;
+CREATE FUNCTION osmc.cover_to_b16h_codes(
   p_level real,    -- last lavel to return
   p_l0_list_b16 text[] default '{0,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f}'::text[], -- the L0 list of codes.
   p_non_recursive boolean default true
 ) RETURNS text[] language SQL IMMUTABLE
 AS $wrap$
    SELECT array_agg( natcod.vbit_to_baseh(cbits,16) )
-   FROM unnest( osmc.cover_cbits($1,$2,$3) ) t(cbits)
+   FROM unnest( osmc.cover_to_cbits($1,$2,$3) ) t(cbits)
 $wrap$;
-COMMENT ON FUNCTION osmc.cover_cbits
-  IS 'Generate series of b16h scientific codes of a country defined by p_l0_list_b16. Wrap for cover_cbits()'
+COMMENT ON FUNCTION osmc.cover_to_b16h_codes
+  IS 'Generate series of b16h codes from origin (or geocode cover). Wrap for cover_to_cbits()'
+;
+
+------------------------------
+-- Below generic function for grid_br.generate_all_levels(), grid_cm.generate_all_levels(), etc. wraps
+
+DROP FUNCTION IF EXISTS osmc.grid_generate_all_levels;
+;
+CREATE FUNCTION osmc.grid_generate_all_levels(
+  p_lev_max       numeric,  -- Maximum level in the set of (generated) hierarchical grids.
+  p_contry        text,     -- e.g. 'CM',
+  p_contry_cover  text,     -- e.g. '{0,1,2,3,4,5,6,7,8,9,a,b,c,d,e}'
+  p_contry_base   integer,  -- e.g. 16. For decode_scientific_absolute_geoms()
+  p_geom4326_size_fraction float DEFAULT 0.005,      -- tested for BR, CM and CO. Zero for tunrn-off at small cells.
+  p_geom4326_tolerance     float DEFAULT 0.00000005  -- tested for BR, CM and CO.
+) RETURNS TABLE ( -- falhou com grid_cm.all_levels
+ gid_vbit  varbit,
+ hlevel    real, 
+ code_b16h text  ,
+ geom      geometry,
+ geom4326  geometry
+) AS $f$
+DECLARE
+  tpl text;
+  lev numeric;
+  s   text  :='';
+  gg  text  :='geom4326';
+BEGIN
+ tpl := $$
+   SELECT cbits as gid_vbit, %1$s::real as hlevel, code as code_b16h, geom, geom4326
+   FROM osmc.decode_scientific_absolute_geoms(
+     osmc.cover_to_b16h_codes(%1$s, %3$L)::text,
+     %2$L,
+     %4$s::int,
+     %5$s::float,
+     %6$s::float
+   ) t
+ $$;
+ FOR lev IN (select x from generate_series(0, p_lev_max, 0.5) t(x)) LOOP
+    IF lev>0 THEN s := s || E'\n UNION ALL \n'; END IF;
+    s := s || format(tpl, lev::text, p_contry, p_contry_cover, p_contry_base::text, p_geom4326_size_fraction::text, p_geom4326_tolerance::text);
+  END LOOP;
+  s := s|| E'\n   ORDER BY 1';
+  RETURN QUERY EXECUTE s;
+END;
+$f$ LANGUAGE PLpgSQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.grid_generate_all_levels IS
+  'Generates and decodes all AFAcodes of a country cover, from level zero to p_lev_max.'
 ;
