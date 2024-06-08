@@ -1518,9 +1518,11 @@ COMMENT ON COLUMN osmc.ttype_decode_scientific_absolute_geoms.geom4326 IS 'The g
 DROP FUNCTION if exists osmc.decode_scientific_absolute_geoms
 ;
 CREATE FUNCTION osmc.decode_scientific_absolute_geoms(
-   p_code text, -- um ou mais (separados por virgula) afaCodes científicos separados por virgula
-   p_iso text,  -- pais de contextualização do afaCode.
-   p_base integer DEFAULT 18  -- detecta antes se usa gambiarra se falsa célula ... não devia precisar.
+   p_code text,   -- um ou mais (separados por virgula) AfaCodes científicos separados por virgula
+   p_iso  text,   -- pais de contextualização do AfaCode.
+   p_base          integer DEFAULT 16,    -- detect beforehand if a false cell is used... it shouldn't be necessary with p_iso.
+   p_size_fraction float DEFAULT 0.005,   -- ST_Transform_resilient's size_fraction. Default tested for BR, CO and CM.
+   p_tolerance     float DEFAULT NULL     -- ST_Transform_resilient's tolerance. 0.00000005 tested for BR and CM.
 ) RETURNS TABLE (
 	cbits varbit,
 	code text,
@@ -1534,13 +1536,13 @@ CREATE FUNCTION osmc.decode_scientific_absolute_geoms(
 AS $f$
     SELECT
 	codebits,
-        TRANSLATE(code_tru,'gqhmrvjknpstzy','GQHMRVJKNPSTZY') as code,
-        ST_Area(v.geom) as area,
-        SQRT(ST_Area(v.geom)) as side,
+        TRANSLATE(code_tru, 'gqhmrvjknpstzy', 'GQHMRVJKNPSTZY') AS code,
+        ST_Area(v.geom) AS area,
+        SQRT(ST_Area(v.geom)) AS side,
         truncated_code,
-        osmc.string_base(p_base) as base,
+        osmc.string_base(p_base) AS base,
         v.geom,
-        ST_Transform_resilient(v.geom,4326,0.005,0.00000005) as geom4326
+        ST_Transform_resilient(v.geom, 4326, p_size_fraction, p_tolerance) AS geom4326
     FROM (
       SELECT DISTINCT code16h,
 
@@ -1598,9 +1600,10 @@ AS $f$
 
     WHERE
     CASE WHEN up_iso = 'UY' THEN c.code16h NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE END
-
 $f$;
--- comment!?
+COMMENT ON FUNCTION osmc.decode_scientific_absolute_geoms IS
+  'Decodes AFAcodes of scientific notation. p_code can be one or more codes separated by commas. p_iso is the ISO country code of 2 letters.'
+;
 
 DROP FUNCTION if exists osmc.L0cover_br_geoms
 ;
