@@ -1667,44 +1667,39 @@ COMMENT ON FUNCTION osmc.L0cover_br_geoms()
 
 -- MUST MIGRATE TO NATCOD!!!
 --  where? for last version of Natcod see https://git.AddressForAll.org/WhitePaper01/blob/main/sql/prepare0-binCodes.sql
-
+===
 DROP FUNCTION IF EXISTS osmc.cover_to_cbits CASCADE
 ;
-CREATE FUNCTION osmc.cover_to_cbits( -- future natcod.b16h_parents_to_vbits().. Wrap for parents_to_children ou vbit_generate_family_from_b16h(), b16h_generate_family()
+CREATE or replace FUNCTION osmc.cover_to_cbits( -- future natcod.b16h_parents_to_vbits().. Wrap for parents_to_children ou vbit_generate_family_from_b16h(), b16h_generate_family()
   p_level real,    -- last lavel to return
   p_l0_list_b16 text[] default '{0,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f}'::text[], -- Natcod parents. In AFAcodes the L0 list of scientific codes.
-  p_non_recursive boolean default true
+  p_non_recursive boolean default true,
+  p_majority boolean default true
 ) RETURNS varbit[] language SQL IMMUTABLE
 AS $f$
  SELECT array_agg(cbits ORDER BY cbits) 
  FROM (
    SELECT natcod.baseh_to_vbit(lower(c),16) FROM unnest(p_l0_list_b16) l0(c)
-   WHERE p_level=0
+   WHERE p_level=0.0
+   
   UNION ALL
-   SELECT l0.cbits||t.cbits
-   FROM natcod.generate_vbit_series( (p_level*2)::int, p_non_recursive ) t(cbits),
-        (SELECT natcod.baseh_to_vbit(lower(c),16) as cbits FROM unnest(p_l0_list_b16) t2(c)) l0  
-   WHERE p_level>0
+   SELECT DISTINCT CASE
+     WHEN p_majority AND majority_len < length(l0.cbits) THEN CASE
+       WHEN (length(t.cbits) + majority_len) <= length(l0.cbits) THEN l0.cbits
+       ELSE l0.cbits || substring( t.cbits, length(l0.cbits)-majority_len +1 )
+       END 
+     ELSE l0.cbits||t.cbits
+   END
+   FROM natcod.generate_vbit_series( (p_level*2.0)::int, p_non_recursive ) t(cbits),
+        (SELECT natcod.baseh_to_vbit(lower(c),16) as cbits FROM unnest(p_l0_list_b16) t2(c)) l0,
+        (SELECT natcod.array_median_length(natcod.baseh_to_vbit(p_l0_list_b16,16))) l0_mj(majority_len) 
+   WHERE p_level>0.0
  ) t2 (cbits)
 $f$;
 COMMENT ON FUNCTION osmc.cover_to_cbits
-  IS 'Generate series of cbits of a country defined by p_l0_list_b16.'
+  IS 'Generate series of cbits of a country defined by p_l0_list_b16. When p_non_recursive is false generates recursivally. When p_majority is false ignores abnormal list.'
 ;
-
-DROP FUNCTION IF EXISTS osmc.cover_to_b16h_codes;
-;
-CREATE FUNCTION osmc.cover_to_b16h_codes(
-  p_level real,    -- last lavel to return
-  p_l0_list_b16 text[] default '{0,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f}'::text[], -- the L0 list of codes.
-  p_non_recursive boolean default true
-) RETURNS text[] language SQL IMMUTABLE
-AS $wrap$
-   SELECT array_agg( natcod.vbit_to_baseh(cbits,16) )
-   FROM unnest( osmc.cover_to_cbits($1,$2,$3) ) t(cbits)
-$wrap$;
-COMMENT ON FUNCTION osmc.cover_to_b16h_codes
-  IS 'Generate series of b16h codes from origin (or geocode cover). Wrap for cover_to_cbits()'
-;
+-- use natcod.vbit_to_baseh(osmc.cover_to_cbits) for direct array convertion.
 
 ------------------------------
 -- Below generic function for grid_br.generate_all_levels(), grid_cm.generate_all_levels(), etc. wraps
