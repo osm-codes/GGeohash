@@ -1703,7 +1703,7 @@ BEGIN
  tpl := $$
    SELECT cbits as gid_vbit, %1$s::real as hlevel, code as code_b16h, geom, geom4326
    FROM osmc.decode_scientific_absolute_geoms(
-     natcod.parents_to_children_baseh(%1$s::real, %3$L::text[], %4$s::int, true, true)::text,
+     natcod.parents_to_children_baseh(%1$s::real, %3$L::text[], 16, true, true)::text,
      %2$L,
      %4$s::int,
      %5$s::float,
@@ -1718,6 +1718,6 @@ BEGIN
   RETURN QUERY EXECUTE s;
 END;
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.grid_generate_all_levels()
+COMMENT ON FUNCTION osmc.grid_generate_all_levels
   IS 'Generate AFAcodes grid of all levels of the country, see BR, CM or CO gits as example.'
 ;
