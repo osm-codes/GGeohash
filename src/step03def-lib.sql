@@ -1474,12 +1474,12 @@ CREATE VIEW osmc_report.v001_osmc_coverage_l0_list AS
  FROM (
   select *, substring(cbits,1,10) as cb10, substring(cbits,11) as cb_suffix
   from osmc.coverage
- ) t 
+ ) t
  WHERE is_country ORDER BY 1,2,cbits
 ;
 
 DROP view if exists osmc_report.v002_osmc_coverage_l0_geoms
-; 
+;
 CREATE VIEW report.v002_osmc_coverage_l0_geoms AS
  select row_number() OVER (ORDER BY cbits) AS gid, *,
         isolabel_ext ||'+'||cbits_b16 as afacode
@@ -1513,7 +1513,7 @@ COMMENT ON COLUMN osmc.ttype_decode_scientific_absolute_geoms.geom IS 'Original 
 COMMENT ON COLUMN osmc.ttype_decode_scientific_absolute_geoms.geom4326 IS 'The geometry with no projection, by ST_Transform_resilient().';
 
 
--------- 
+--------
 -- FUNCTIONS:
 DROP FUNCTION if exists osmc.decode_scientific_absolute_geoms
 ;
@@ -1607,7 +1607,7 @@ COMMENT ON FUNCTION osmc.decode_scientific_absolute_geoms IS
 
 DROP FUNCTION if exists osmc.L0cover_br_geoms
 ;
-CREATE FUNCTION osmc.L0cover_br_geoms() 
+CREATE FUNCTION osmc.L0cover_br_geoms()
 RETURNS TABLE (
     gid  int,
 	cbits         varbit,
@@ -1676,7 +1676,9 @@ COMMENT ON FUNCTION osmc.L0cover_br_geoms()
 ------------------------------
 -- Below generic function for grid_br.generate_all_levels(), grid_cm.generate_all_levels(), etc. wraps
 
-DROP FUNCTION IF EXISTS osmc.grid_generate_all_levels;
+
+
+DROP FUNCTION IF EXISTS osmc.grid_generate_all_levels
 ;
 CREATE FUNCTION osmc.grid_generate_all_levels(
   p_lev_max       numeric,  -- Maximum level in the set of (generated) hierarchical grids.
@@ -1687,7 +1689,7 @@ CREATE FUNCTION osmc.grid_generate_all_levels(
   p_geom4326_tolerance     float DEFAULT 0.00000005  -- tested for BR, CM and CO.
 ) RETURNS TABLE ( -- falhou com grid_cm.all_levels
  gid_vbit  varbit,
- hlevel    real, 
+ hlevel    real,
  code_b16h text  ,
  geom      geometry,
  geom4326  geometry
@@ -1701,7 +1703,7 @@ BEGIN
  tpl := $$
    SELECT cbits as gid_vbit, %1$s::real as hlevel, code as code_b16h, geom, geom4326
    FROM osmc.decode_scientific_absolute_geoms(
-     natcod.parents_to_children_baseh(%1$s, %3$L, true, true)::text  
+     natcod.parents_to_children_baseh(%1$s::real, %3$L::text[], %4$s::int, true, true)::text,
      %2$L,
      %4$s::int,
      %5$s::float,
@@ -1716,6 +1718,6 @@ BEGIN
   RETURN QUERY EXECUTE s;
 END;
 $f$ LANGUAGE PLpgSQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.grid_generate_all_levels IS
-  'Generates and decodes all AFAcodes of a country cover, from level zero to p_lev_max.'
+COMMENT ON FUNCTION osmc.grid_generate_all_levels()
+  IS 'Generate AFAcodes grid of all levels of the country, see BR, CM or CO gits as example.'
 ;
