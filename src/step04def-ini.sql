@@ -13,7 +13,7 @@ CREATE or replace FUNCTION osmc.L0_upsert(
 
   INSERT INTO osmc.coverage(cbits,isolabel_ext,bbox,status,is_country,is_contained,is_overlay,geom,geom_srid4326)
   SELECT int_country_id::bit(8) || (natcod.baseh_to_vbit(prefix,16)),p_isolabel_ext,bbox,p_status,TRUE,
-         (CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN TRUE ELSE FALSE END),
+         ST_ContainsProperly(geom_country,geom_cell),
          FALSE,geom,ST_Transform(geom,4326)
   FROM
   (
