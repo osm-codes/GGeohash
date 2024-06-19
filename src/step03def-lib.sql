@@ -731,7 +731,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
     WHERE CASE WHEN p_jurisd_id = 4 THEN c.code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
 
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.osmcode_encode_scientific(float,float,int,int,int,int,int[],varbit,int,boolean)
+COMMENT ON FUNCTION osmc.osmcode_encode_scientific(float,float,int,int,int,int,int[],varbit,int,int,boolean)
   IS 'Encodes geometry to OSMcode.'
 ;
 
@@ -942,7 +942,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
     WHERE
     CASE WHEN p_jurisd_id = 4 THEN c.code NOT IN ('0eg','10g','12g','00r','12r','0eh','05q','11q') ELSE TRUE  END
 $f$ LANGUAGE SQL IMMUTABLE;
-COMMENT ON FUNCTION osmc.encode_postal(geometry(POINT),float,float,int,int,int,int[],varbit,int,boolean,int,text)
+COMMENT ON FUNCTION osmc.encode_postal(geometry(POINT),float,float,int,int,int,int[],varbit,int,int,boolean,int,text)
   IS 'Encodes geometry to Logistic AFAcode.'
 ;
 
@@ -1478,7 +1478,7 @@ CREATE VIEW osmc_report.v001_osmc_coverage_l0_list AS
 
 DROP view if exists osmc_report.v002_osmc_coverage_l0_geoms
 ;
-CREATE VIEW report.v002_osmc_coverage_l0_geoms AS
+CREATE VIEW osmc_report.v002_osmc_coverage_l0_geoms AS
  select row_number() OVER (ORDER BY cbits) AS gid, *,
         isolabel_ext ||'+'||cbits_b16 as afacode
  from (
