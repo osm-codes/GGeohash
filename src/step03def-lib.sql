@@ -614,7 +614,7 @@ CREATE or replace FUNCTION osmc.encode_point_cm(
       FROM osmc.coverage
       WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 3 AND ST_X(x) BETWEEN bbox[1] AND bbox[3] AND ST_Y(x) BETWEEN bbox[2] AND bbox[4]
     )
-  FROM (SELECT ST_Transform(p_geom,102022)) t(x)
+  FROM (SELECT ST_Transform(p_geom,32632)) t(x)
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_point_colombia(geometry(POINT),int)
   IS 'Encode Point for Colombia: base 32nvu, default 8 digits'
@@ -772,7 +772,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_cm(
       WHEN p_uncertainty > -1 AND u <= 4 THEN 0
       ELSE 40
       END,
-      102022,
+      32632,
       CASE
         WHEN u > 37 THEN 0
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 3 ELSE 2 END))
@@ -981,7 +981,7 @@ CREATE or replace FUNCTION osmc.encode_postal_cm(
       WHEN p_uncertainty > -1 THEN ((u-4)/5)*5 +1
       ELSE 31 -- 30 shift 1, 5.7m, L16.5
       END,
-      102022,
+      32632,
       CASE
         WHEN u = 40 THEN 0
         ELSE p_grid_size
@@ -1448,13 +1448,11 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.grid_gen
   IS 'Generates grids based on the default values for each country.'
 ;
+-- SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,32632,'CM');
 
--- SELECT * FROM osmc.grid_gen(6,4,-1745000,170000,262144,102022,'CM');
-
-
--- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,-1745000,170000,262144,102022,''CM'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
--- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,-1745000,170000,262144,102022,''CM'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
--- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,-1745000,170000,262144,102022,''CM'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,3263,''CM'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,3263,''CM'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,3263,''CM'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
 
 -- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
 -- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);

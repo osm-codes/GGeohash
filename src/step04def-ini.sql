@@ -30,7 +30,7 @@ CREATE or replace FUNCTION osmc.L0_upsert(
         (
           SELECT null AS int_country_id, ST_Transform(geom,p_srid) AS geom
           FROM optim.jurisdiction_eez
-          WHERE isolabel_ext IN ('CO','CO/JM')
+          WHERE p_isolabel_ext IN ('CO','CO/JM')
 
           UNION
 
@@ -93,7 +93,7 @@ CREATE or replace FUNCTION osmc.L0cover_upsert(
   SELECT
     CASE split_part(p_iso,'-',1)
     WHEN 'BR' THEN osmc.L0_upsert('BR',1::smallint,952019,2715000,6727000,1048576,'{40,41,42,43,30,31,32,33,34,21,22,23,11,12,13,2,44,24}'::int[],'{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[])
-    WHEN 'CM' THEN osmc.L0_upsert('CM',1::smallint,102022,-1745000,170000,262144,'{0,1,2,3,10,11,12,20,21,22,31,32,42,52}'::int[],'{b,c,d,e,8,9,a,5,6,7,3,4,2,1}'::text[])
+    WHEN 'CM' THEN osmc.L0_upsert('CM',1::smallint,32632,408600,164150,262144,'{0,1,2,3,10,11,12,20,21,22,23,31,32,33,42}'::int[],'{c,d,e,f,9,a,b,5,6,7,8,2,3,4,1}'::text[])
     WHEN 'UY' THEN osmc.L0_upsert('UY',1::smallint,32721,353000,6028000,131072,'{40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3}'::int[],'{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[])
     WHEN 'CO' THEN osmc.L0_upsert('CO',1::smallint,9377,3678500,970000,524288,'{2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42}'::int[],'{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}'::text[]);
     WHEN 'EC' THEN osmc.L0cover_upsert_ec()
@@ -127,7 +127,7 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
     FROM
     (
       SELECT is_overlay, prefix,
-            ((('{"CM":102022, "CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
+            ((('{"CM":32632, "CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
             ROW_NUMBER() OVER (PARTITION BY isolabel_ext ORDER BY length(prefix), prefix ASC) AS order_prefix,
             natcod.baseh_to_vbit(prefix,16) AS prefix_bits,
             split_part(p_isolabel_ext,'-',1) AS isocountry
@@ -296,7 +296,7 @@ FROM
       FROM
       (
         SELECT p_isolabel_ext AS isolabel_ext,
-               ((('{"CM":102022, "CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
+               ((('{"CM":32632, "CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
                unnest(p_cover) AS prefix
       ) pp
     ) p,
