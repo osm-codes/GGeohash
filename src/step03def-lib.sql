@@ -1541,7 +1541,8 @@ AS $f$
         osmc.string_base(p_base) AS base,
         v.geom,
         ST_Transform_resilient(v.geom, 4326, p_size_fraction, p_tolerance) AS geom4326
-    FROM (
+    FROM
+    (
       SELECT DISTINCT code16h,
 
       -- trunca
@@ -1581,18 +1582,18 @@ AS $f$
                   WHEN p_base = 18 THEN osmc.decode_16h1c(code,upper(p_iso))
                   ELSE code
                 END AS code16h
-        FROM regexp_split_to_table(lower(trim(p_code,'{}')),',') code
+        FROM regexp_split_to_table(lower(p_code),',') code
       ) u
     ) c,
     LATERAL
     (
-      SELECT ggeohash.draw_cell_bybox(ggeohash.decode_box2(osmc.vbit_withoutL0(codebits,c.up_iso),bbox, CASE WHEN c.up_iso='EC' THEN TRUE ELSE FALSE END),false,ST_SRID(geom)) AS geom
+      SELECT ggeohash.draw_cell_bybox(ggeohash.decode_box2(osmc.vbit_withoutL0(codebits,osmc.extract_jurisdbits(cbits)),bbox, CASE WHEN c.up_iso='EC' THEN TRUE ELSE FALSE END),false,ST_SRID(geom)) AS geom
       FROM osmc.coverage
       WHERE is_country IS TRUE AND isolabel_ext = c.up_iso -- cobertura nacional apenas
         AND
         CASE
-        WHEN up_iso IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits,'CO')   # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígito base16h
-        ELSE                            ( ( osmc.extract_L0bits(cbits,up_iso) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+        WHEN up_iso IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits) # codebits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
+        ELSE                            ( ( osmc.extract_L0bits(cbits) # codebits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
         END
     ) v
 
@@ -1623,7 +1624,7 @@ RETURNS TABLE (
          CASE WHEN left(prefix,1)='0' THEN substring(prefix,2,1) ELSE prefix END as b16_label,
          prefix,-- natcod.vbit_to_baseh(substring(cbits,11),16) as b16_label,
          'BR', bbox,
-         CASE WHEN ST_ContainsProperly(geom_country,geom_cell) IS FALSE THEN TRUE ELSE FALSE END,
+         ST_ContainsProperly(geom_country,geom_cell),
          geom,
          geom_cell,
          ST_Transform(geom,4326)
@@ -1665,7 +1666,6 @@ COMMENT ON FUNCTION osmc.L0cover_br_geoms()
 
 -- MUST MIGRATE TO NATCOD!!!
 --  where? for last version of Natcod see https://git.AddressForAll.org/WhitePaper01/blob/main/sql/prepare0-binCodes.sql
-===
 
 -- FUNCTION osmc.cover_to_cbits osmc.cover_to_cbits moved to https://github.com/AddressForAll/WhitePaper01/blob/main/sql/prepare2-baseConv.sql--
 -- now is natcod.parents_to_children()
