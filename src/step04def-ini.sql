@@ -62,23 +62,21 @@ CREATE or replace FUNCTION osmc.L0cover_upsert_ec() RETURNS text AS $f$
   INSERT INTO osmc.coverage(cbits,isolabel_ext,bbox,status,is_country,is_contained,is_overlay,geom,geom_srid4326)
   SELECT int_country_id::bit(8) || (natcod.baseh_to_vbit(prefix,16)),
          'EC',bbox,1::SMALLINT,TRUE,
-         ST_ContainsProperly(geom_country,geom_cell,
+         ST_ContainsProperly(geom_country,geom_cell),
          FALSE,geom,ST_Transform(geom,4326)
   FROM
   (
-    (
-      SELECT prefix,bbox,geom_country,int_country_id,
-        ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,32717),geom_country) AS geom,
-        ggeohash.draw_cell_bybox(bbox,false,32717) AS geom_cell
-      FROM unnest
-          (
-          '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
-          array[60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6]
-          ) t(prefix,quadrant),
-          LATERAL (SELECT ARRAY[ -870000 + (quadrant%10)*262144, 9401000 + (quadrant/10)*(131072), -870000 + (quadrant%10)*262144+262144, 9401000 + (quadrant/10)*(131072)+131072 ]) u(bbox),
-          LATERAL (SELECT int_country_id, ST_Transform(geom,32717) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'EC' AND isolevel = 1) r(int_country_id, geom_country)
-      WHERE quadrant IS NOT NULL
-    )
+    SELECT prefix,bbox,geom_country,int_country_id,
+      ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,32717),geom_country) AS geom,
+      ggeohash.draw_cell_bybox(bbox,false,32717) AS geom_cell
+    FROM unnest
+        (
+        '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
+        array[60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6]
+        ) t(prefix,quadrant),
+        LATERAL (SELECT ARRAY[ -870000 + (quadrant%10)*262144, 9401000 + (quadrant/10)*(131072), -870000 + (quadrant%10)*262144+262144, 9401000 + (quadrant/10)*(131072)+131072 ]) u(bbox),
+        LATERAL (SELECT int_country_id, ST_Transform(geom,32717) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'EC' AND isolevel = 1) r(int_country_id, geom_country)
+    WHERE quadrant IS NOT NULL
   ) z
   RETURNING 'Ok.'
   ;
