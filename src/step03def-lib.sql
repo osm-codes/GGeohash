@@ -1450,9 +1450,9 @@ COMMENT ON FUNCTION osmc.grid_gen
 ;
 -- SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,32632,'CM');
 
--- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,3263,''CM'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
--- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,3263,''CM'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
--- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,3263,''CM'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,32632,''CM'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,32632,''CM'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
+-- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,32632,''CM'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
 
 -- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
 -- SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
@@ -1464,28 +1464,30 @@ COMMENT ON FUNCTION osmc.grid_gen
 --- REPORTS:
 CREATE SCHEMA osmc_report;
 
+DROP VIEW IF EXISTS osmc_report.v001_osmc_coverage_l0_list;
 CREATE VIEW osmc_report.v001_osmc_coverage_l0_list AS
- SELECT isolabel_ext ||' = '||(b'0000000000000000000000'||cb10)::bit(32)::int ||' = '||cb10 as pais,
+ SELECT isolabel_ext ||' = '||(b'000000000000000000000000'||cb8)::bit(32)::int ||' = '||cb8 AS pais,
        is_contained,
-       cb10::text||'.'||cb_suffix as cbits, natcod.vbit_to_baseh(cb_suffix,16) as b16,
-       status,  round(st_area(geom)/1000000.0) as area_km2
- FROM (
-  select *, substring(cbits,1,10) as cb10, substring(cbits,11) as cb_suffix
-  from osmc.coverage
+       cb8::text||'.'||cb_suffix AS cbits, natcod.vbit_to_baseh(cb_suffix,16) AS b16,
+       status,  round(st_area(geom)/1000000.0) AS area_km2
+ FROM
+ (
+  SELECT *, (osmc.extract_jurisdbits(cbits))::bit(8) AS cb8, osmc.extract_cellbits(cbits) AS cb_suffix
+  FROM osmc.coverage
  ) t
  WHERE is_country ORDER BY 1,2,cbits
 ;
 
-DROP view if exists osmc_report.v002_osmc_coverage_l0_geoms
-;
+DROP VIEW IF EXISTS osmc_report.v002_osmc_coverage_l0_geoms;
 CREATE VIEW osmc_report.v002_osmc_coverage_l0_geoms AS
- select row_number() OVER (ORDER BY cbits) AS gid, *,
-        isolabel_ext ||'+'||cbits_b16 as afacode
- from (
-  select isolabel_ext,cbits,
-    natcod.vbit_to_baseh(substring(cbits,11)::bit varying, 16) AS cbits_b16,
+ SELECT row_number() OVER (ORDER BY cbits) AS gid, *,
+        isolabel_ext ||'+'||cbits_b16 AS afacode
+ FROM
+ (
+  SELECT isolabel_ext,cbits,
+    natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16) AS cbits_b16,
     geom_srid4326
-  from osmc.coverage where is_country and isolabel_ext IN ('BR','CO','CM')
+  FROM osmc.coverage WHERE is_country AND isolabel_ext IN ('BR','CO','CM')
  ) t
 ;
 ------
