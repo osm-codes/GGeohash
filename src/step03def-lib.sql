@@ -472,7 +472,7 @@ COMMENT ON FUNCTION osmc.decode_16h1c(text,text)
 ;
 
 CREATE or replace FUNCTION osmc.extract_cellbits(
-  p_x  varbit
+  p_x varbit
 ) RETURNS varbit AS $f$
   SELECT substring(p_x from 9);
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -481,7 +481,7 @@ COMMENT ON FUNCTION osmc.extract_cellbits(varbit)
 ;
 
 CREATE or replace FUNCTION osmc.extract_jurisdbits(
-  p_x  varbit
+  p_x varbit
 ) RETURNS int AS $f$
   SELECT (p_x::bit(8))::int;
 $f$ LANGUAGE SQL IMMUTABLE;
@@ -512,10 +512,10 @@ CREATE or replace FUNCTION osmc.extract_L0bits(
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
-    WHEN y IN (1,4,5) THEN osmc.extract_L0bits8(p_x)
-    WHEN y IN (2,3)   THEN osmc.extract_L0bits4(p_x)
+    WHEN jurisd_id IN (1,4,5) THEN osmc.extract_L0bits8(p_x)
+    WHEN jurisd_id IN (2,3)   THEN osmc.extract_L0bits4(p_x)
     END
-  FROM osmc.extract_jurisdbits(p_x) y
+  FROM osmc.extract_jurisdbits(p_x) jurisd_id
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.extract_L0bits(varbit)
@@ -523,7 +523,7 @@ COMMENT ON FUNCTION osmc.extract_L0bits(varbit)
 ;
 
 CREATE or replace FUNCTION osmc.vbit_withoutL0(
-  p_x  varbit,
+  p_x   varbit,
   p_iso int
 ) RETURNS varbit AS $wrap$
   SELECT
@@ -538,7 +538,7 @@ COMMENT ON FUNCTION osmc.vbit_withoutL0(varbit,int)
 ;
 
 CREATE or replace FUNCTION osmc.cbits_b32nvu_to_16h(
-  p_x  varbit,
+  p_x   varbit,
   p_iso int
 ) RETURNS varbit AS $wrap$
   SELECT
@@ -554,13 +554,14 @@ COMMENT ON FUNCTION osmc.cbits_b32nvu_to_16h(varbit,int)
 ;
 
 CREATE or replace FUNCTION osmc.cbits_16h_to_b32nvu(
-  p_x  varbit,
+  p_x   varbit,
   p_iso int
 ) RETURNS varbit AS $wrap$
   SELECT
     CASE
-    WHEN p_iso IN (1,4,5) THEN substring(p_x from 4) -- 8bits MSb viram 5
-    WHEN p_iso IN (2)     THEN b'0' || substring(p_x,1,4) || b'00' || substring(p_x from 5) -- 4bits MSb viram 5. eg.: xxxxxxxx -> 0xxxx00xxxx
+    WHEN p_iso IN (1,4,5) THEN                                          substring(p_x from 4) -- 8bits MSb viram 5
+    WHEN p_iso IN (2,3) AND length(p_x) = 4 THEN b'0' || p_x
+    WHEN p_iso IN (2)     THEN b'0' || substring(p_x,1,4) || b'00'   || substring(p_x from 5) -- 4bits MSb viram 5. eg.: xxxxxxxx -> 0xxxx00xxxx
     WHEN p_iso IN (3)     THEN b'0' || substring(p_x,1,4) || b'0000' || substring(p_x from 5)
     END
     ;
