@@ -30,6 +30,7 @@ CREATE SCHEMA IF NOT EXISTS ggeohash; -- Geographic application of hcodes and Mo
 -- -- -- -- -- --
 -- Main functions
 
+/* Old functions
 CREATE or replace FUNCTION ggeohash.encode(  -- to string, old ggeohash.encode
    x float,
    y float,
@@ -181,6 +182,7 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION ggeohash.encode2(float, float, integer, integer, text, float[])
   IS 'Wrap for ggeohash.encode2(float, float, integer, integer, text, float, float, float, float).'
 ;
+*/
 
 CREATE or replace FUNCTION ggeohash.encode3(
    x float,
@@ -278,7 +280,7 @@ COMMENT ON FUNCTION ggeohash.encode4(int, int, int, int, int, int, int)
 -- no xmax, ymax, etc. only latlong 
 
 -- -- --
-
+/* Old function
 CREATE or replace FUNCTION ggeohash.decode_box( -- to box array
    code text,
    code_digit_bits int default 5,  -- 5 for base32, 4 for base16 or 2 for base4
@@ -339,6 +341,7 @@ COMMENT ON FUNCTION ggeohash.decode_box(text, integer, jsonb, float, float, floa
   IS 'Decodes string of a Generalized Geohash into a bounding Box that matches it. Returns a four-element array: [minlat, minlon, maxlat, maxlon]. Algorithm adapted from https://github.com/ppKrauss/node-geohash/blob/master/main.js'
 ;
 
+
 CREATE or replace FUNCTION ggeohash.decode_box(
    code text,                 -- 1
    code_digit_bits int,       -- 2
@@ -350,6 +353,7 @@ $wrap$ LANGUAGE sql IMMUTABLE;
 COMMENT ON FUNCTION ggeohash.decode_box(text, integer, jsonb, float[])
   IS 'Wrap for ggeohash.decode_box(text, integer, jsonb, float, float, float, float).'
 ;
+*/
 
 -- pode substituir ggeohash.decode_box
 CREATE or replace FUNCTION ggeohash.decode_box2(
