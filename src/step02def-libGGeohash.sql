@@ -30,7 +30,6 @@ CREATE SCHEMA IF NOT EXISTS ggeohash; -- Geographic application of hcodes and Mo
 -- -- -- -- -- --
 -- Main functions
 
-/* Old functions
 CREATE or replace FUNCTION ggeohash.encode(  -- to string, old ggeohash.encode
    x float,
    y float,
@@ -107,6 +106,7 @@ COMMENT ON FUNCTION ggeohash.encode(float, float, integer, integer, text, float[
   IS 'Wrap for ggeohash.encode(float, float, integer, integer, text, float, float, float, float).'
 ;
 
+/* Old functions
 CREATE or replace FUNCTION ggeohash.encode2( -- to JSON
    x float,
    y float,
@@ -280,7 +280,7 @@ COMMENT ON FUNCTION ggeohash.encode4(int, int, int, int, int, int, int)
 -- no xmax, ymax, etc. only latlong 
 
 -- -- --
-/* Old function
+
 CREATE or replace FUNCTION ggeohash.decode_box( -- to box array
    code text,
    code_digit_bits int default 5,  -- 5 for base32, 4 for base16 or 2 for base4
@@ -353,7 +353,7 @@ $wrap$ LANGUAGE sql IMMUTABLE;
 COMMENT ON FUNCTION ggeohash.decode_box(text, integer, jsonb, float[])
   IS 'Wrap for ggeohash.decode_box(text, integer, jsonb, float, float, float, float).'
 ;
-*/
+
 
 -- pode substituir ggeohash.decode_box
 CREATE or replace FUNCTION ggeohash.decode_box2(
