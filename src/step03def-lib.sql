@@ -1173,6 +1173,21 @@ CREATE or replace FUNCTION osmc.neighborsl0(
             WHEN p_iso = 2 AND p_x = b'1101'     THEN ARRAY[b'1111',NULL,NULL,b'1110',b'1100',b'0110',b'0111',b'0010']
             WHEN p_iso = 2 AND p_x = b'1110'     THEN ARRAY[NULL,NULL,NULL,NULL,b'1011',b'1001',b'1100',b'1101']
             WHEN p_iso = 2 AND p_x = b'1111'     THEN ARRAY[NULL,NULL,NULL,NULL,b'1101',b'0111',b'0010',NULL]
+            WHEN p_iso = 3 AND p_x = b'0001'     THEN ARRAY[NULL,NULL,NULL,b'0100',b'0011',b'0010',NULL,NULL]
+            WHEN p_iso = 3 AND p_x = b'0010'     THEN ARRAY[NULL,b'0001',b'0011',b'0111',b'0110',b'0101',NULL,NULL]
+            WHEN p_iso = 3 AND p_x = b'0011'     THEN ARRAY[b'0001',NULL,b'0100',b'1000',b'0111',b'0110',b'0010',NULL]
+            WHEN p_iso = 3 AND p_x = b'0100'     THEN ARRAY[NULL,NULL,NULL,NULL,b'1000',b'0111',b'0011',b'0001']
+            WHEN p_iso = 3 AND p_x = b'0101'     THEN ARRAY[NULL,b'0010',b'0110',b'1010',b'1001',NULL,NULL,NULL]
+            WHEN p_iso = 3 AND p_x = b'0110'     THEN ARRAY[b'0010',b'0011',b'0111',b'1011',b'1010',b'1001',b'0101',NULL]
+            WHEN p_iso = 3 AND p_x = b'0111'     THEN ARRAY[b'0011',b'0100',b'1000',NULL,b'1011',b'1010',b'0110',b'0010']
+            WHEN p_iso = 3 AND p_x = b'1000'     THEN ARRAY[b'0100',NULL,NULL,NULL,NULL,b'1011',b'0111',b'0011']
+            WHEN p_iso = 3 AND p_x = b'1001'     THEN ARRAY[b'0101',b'0110',b'1010',b'1101',b'1100',NULL,NULL,NULL]
+            WHEN p_iso = 3 AND p_x = b'1010'     THEN ARRAY[b'0110',b'0111',b'1011',b'1110',b'1101',b'1100',b'1001',b'0101']
+            WHEN p_iso = 3 AND p_x = b'1011'     THEN ARRAY[b'0111',b'1000',NULL,b'1111',b'1110',b'1101',b'1010',b'0110']
+            WHEN p_iso = 3 AND p_x = b'1100'     THEN ARRAY[b'1001',b'1010',b'1101',NULL,NULL,NULL,NULL,NULL]
+            WHEN p_iso = 3 AND p_x = b'1101'     THEN ARRAY[b'1010',b'1011',b'1110',NULL,NULL,NULL,b'1100',b'1001']
+            WHEN p_iso = 3 AND p_x = b'1110'     THEN ARRAY[b'1011',NULL,b'1111',NULL,NULL,NULL,b'1101',b'1010']
+            WHEN p_iso = 3 AND p_x = b'1111'     THEN ARRAY[NULL,NULL,NULL,NULL,NULL,NULL,b'1110',b'1011']
         END
     ;
 $f$ LANGUAGE SQL IMMUTABLE;
