@@ -862,7 +862,7 @@ CREATE or replace FUNCTION osmc.encode_scientific_ec(
         WHEN p_grid_size > 0 AND u = 37 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
         ELSE p_grid_size
       END
-      ,bbox,osmc.extract_L0bits8(cbits),5,218,FALSE)
+      ,bbox,osmc.extract_L0bits8(cbits),5,218,TRUE)
     FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
     WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 5 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
 $f$ LANGUAGE SQL IMMUTABLE;
