@@ -21,7 +21,14 @@ CREATE or replace FUNCTION osmc.L0_upsert(
         ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,p_srid),geom_country) AS geom,
         ggeohash.draw_cell_bybox(bbox,false,p_srid) AS geom_cell
       FROM unnest(p_grid_16,p_grid) t(prefix,quadrant),
-      LATERAL (SELECT osmc.ij_to_bbox(quadrant%10,quadrant/10,p_x,p_y,p_side)) u(bbox),
+      LATERAL
+      (
+        SELECT
+          CASE
+            WHEN p_isolabel_ext IN ('EC') THEN ARRAY[ p_x + (quadrant%10)*262144, p_y + (quadrant/10)*(131072), p_x + (quadrant%10)*262144+262144, p_y + (quadrant/10)*(131072)+131072 ]
+            ELSE osmc.ij_to_bbox(quadrant%10,quadrant/10,p_x,p_y,p_side)
+          END
+      ) u(bbox),
       -- LATERAL (SELECT int_country_id, ST_Transform(geom,p_srid) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = p_isolabel_ext AND isolevel = 1) r(int_country_id,geom_country)
 
       LATERAL (
@@ -57,44 +64,16 @@ COMMENT ON FUNCTION osmc.L0_upsert(text,smallint,int,int,int,int,int[],text[])
   IS 'Upsert L0cover from '
 ;
 
-CREATE or replace FUNCTION osmc.L0cover_upsert_ec() RETURNS text AS $f$
-  DELETE FROM osmc.coverage  WHERE isolabel_ext='EC';
-  INSERT INTO osmc.coverage(cbits,isolabel_ext,bbox,status,is_country,is_contained,is_overlay,geom,geom_srid4326)
-  SELECT int_country_id::bit(8) || (natcod.baseh_to_vbit(prefix,16)),
-         'EC',bbox,1::SMALLINT,TRUE,
-         ST_ContainsProperly(geom_country,geom_cell),
-         FALSE,geom,ST_Transform(geom,4326)
-  FROM
-  (
-    SELECT prefix,bbox,geom_country,int_country_id,
-      ST_Intersection(ggeohash.draw_cell_bybox(bbox,false,32717),geom_country) AS geom,
-      ggeohash.draw_cell_bybox(bbox,false,32717) AS geom_cell
-    FROM unnest
-        (
-        '{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[],
-        array[60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6]
-        ) t(prefix,quadrant),
-        LATERAL (SELECT ARRAY[ -870000 + (quadrant%10)*262144, 9401000 + (quadrant/10)*(131072), -870000 + (quadrant%10)*262144+262144, 9401000 + (quadrant/10)*(131072)+131072 ]) u(bbox),
-        LATERAL (SELECT int_country_id, ST_Transform(geom,32717) FROM optim.vw01full_jurisdiction_geom g WHERE g.isolabel_ext = 'EC' AND isolevel = 1) r(int_country_id, geom_country)
-    WHERE quadrant IS NOT NULL
-  ) z
-  RETURNING 'Ok.'
-  ;
-$f$ LANGUAGE SQL;
-COMMENT ON FUNCTION osmc.L0cover_upsert_ec()
-  IS 'Upsert L0cover from .'
-;
-
 CREATE or replace FUNCTION osmc.L0cover_upsert(
   p_iso text
 ) RETURNS text AS $wrap$
   SELECT
     CASE split_part(p_iso,'-',1)
-    WHEN 'BR' THEN osmc.L0_upsert('BR',1::smallint,952019,2715000,6727000,1048576,'{40,41,42,43,30,31,32,33,34,21,22,23,11,12,13,2,44,24}'::int[],'{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[])
+    WHEN 'BR' THEN osmc.L0_upsert('BR',1::smallint,952019,2715000,6727000,1048576,'{40,41,42,43,30,31,32,33,34,21,22,23,11,12,13,2,44,24}'::int[],'{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11}'::text[])
     WHEN 'CM' THEN osmc.L0_upsert('CM',1::smallint,32632,408600,164150,262144,'{0,1,2,3,10,11,12,20,21,22,23,31,32,33,42}'::int[],'{c,d,e,f,9,a,b,5,6,7,8,2,3,4,1}'::text[])
-    WHEN 'UY' THEN osmc.L0_upsert('UY',1::smallint,32721,353000,6028000,131072,'{40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3}'::int[],'{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f}'::text[])
+    WHEN 'UY' THEN osmc.L0_upsert('UY',1::smallint,32721,353000,6028000,131072,'{40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3}'::int[],'{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12}'::text[])
     WHEN 'CO' THEN osmc.L0_upsert('CO',1::smallint,9377,3678500,970000,524288,'{2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42}'::int[],'{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}'::text[])
-    WHEN 'EC' THEN osmc.L0cover_upsert_ec()
+    WHEN 'EC' THEN osmc.L0_upsert('EC',1::smallint,32717,-870000,9401000,262144,'{60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6}'::int[],'{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15}'::text[])
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -102,7 +81,6 @@ COMMENT ON FUNCTION osmc.L0cover_upsert(text)
   IS 'Upsert L0cover from ISO.'
 ;
 -- SELECT osmc.L0cover_upsert('BR');
--- select osmc.L0_upsert('CO',1::smallint,9377,3678500,970000,524288,'{2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42}'::int[],'{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}'::text[]);
 
 -- DE_PARA COVER
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
