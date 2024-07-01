@@ -1422,23 +1422,26 @@ COMMENT ON FUNCTION osmc.afa_log_to_hBig(text,text)
 ----------------------
 
 CREATE or replace FUNCTION osmc.grid_gen(
-  c     int, -- coluna
-  l     int, -- linha
-  x0    int, -- referencia de inicio do eixo x [x0,y0]
-  y0    int, -- referencia de inicio do eixo y [x0,y0]
-  s     int, -- lado da célula
-  srid  int, -- srid
-  isolabel text,
-  type  int DEFAULT 0, -- 0: grid l x c
-                       -- 1: grid L0 coverage
-                       -- 2: grid L0 coverage intersects
-  srid_out int DEFAULT 4326 -- srid
-) RETURNS TABLE (gid int, ij text, ij_int int, code text, geom geometry) AS $f$
-  SELECT  gid, ij, ij_int,
-          CASE
-            WHEN type IN (  1) THEN NULL
-            WHEN type IN (1,2) THEN lower(natcod.vbit_to_baseh(gid::bit(4),16))
-          END AS code,
+  p_i            int, -- coluna
+  p_j            int, -- linha
+  p_x0           int, -- referencia de inicio do eixo x [x0,y0]
+  p_y0           int, -- referencia de inicio do eixo y [x0,y0]
+  p_s            int, -- lado da célula
+  p_srid         int, -- srid
+  p_isolabel_ext text,
+  p_grid         int[],
+  p_grid_16      text[],
+  type           int DEFAULT 0, -- 0: grid
+                                -- 1: grid L0 coverage
+                                -- 2: grid L0 coverage intersects
+  srid_out       int DEFAULT 4326 -- srid
+) RETURNS TABLE (gid int, ji text, ji_int int, code text, geom geometry) AS $f$
+  SELECT  gid, ji, ji_int,
+          (
+            SELECT code
+            FROM unnest(p_grid,p_grid_16) t(ji,code)
+            WHERE t.ji = a.ji_int
+          ) AS code,
           ST_Transform(
           CASE
             WHEN type IN (0, 1) THEN geom
@@ -1446,26 +1449,9 @@ CREATE or replace FUNCTION osmc.grid_gen(
               ST_Intersection(
                 geom,
                 (
-                  SELECT ST_UNION(geom)
-                  FROM
-                  (
-                    SELECT ST_Transform(e.geom,srid) AS geom
-                    FROM optim.jurisdiction_eez e
-                    WHERE isolabel_ext IN ('CO','CO/JM') AND isolabel IN ('CO','CO/JM')
-
-                    UNION
-
-                    SELECT ST_Transform(g.geom,srid) AS geom
-                    FROM optim.vw01full_jurisdiction_geom g
-                    WHERE isolabel_ext = isolabel
-                  ) x
-                  WHERE
-                      (
-                        CASE
-                          WHEN isolabel NOT IN ('CO') THEN geom IS NOT NULL
-                          ELSE TRUE
-                        END
-                      )
+                  SELECT ST_Transform(geom,p_srid) AS geom
+                  FROM optim.mvwjurisdiction_geomeez
+                  WHERE isolabel_ext = p_isolabel_ext
                 )
               )
           END
@@ -1473,14 +1459,14 @@ CREATE or replace FUNCTION osmc.grid_gen(
   FROM
   (
     SELECT  ROW_NUMBER() OVER(ORDER BY j DESC, i ASC) as gid,
-            --lpad((j*10+i)::text,2,'0') AS ij,
-            j::text || i::text AS ij,
-            (j*10+i) AS ij_int,
+            --lpad((j*10+i)::text,2,'0') AS ji,
+            j::text || i::text AS ji,
+            (j*10+i) AS ji_int,
           CASE
-            WHEN isolabel IN ('EC') THEN ggeohash.draw_cell_bybox(ARRAY[ x0 + i*262144, y0 + j*(131072), x0 + i*262144+262144, y0 + j*(131072)+131072 ],false,srid)
-            ELSE osmc.ij_to_geom(i,j,x0,y0,s,srid)
+            WHEN p_isolabel_ext IN ('EC') THEN ggeohash.draw_cell_bybox(ARRAY[ p_x0 + i*262144, p_y0 + j*(131072), p_x0 + i*262144+262144, p_y0 + j*(131072)+131072 ],false,p_srid)
+            ELSE osmc.ij_to_geom(i,j,p_x0,p_y0,p_s,p_srid)
           END AS geom
-    FROM generate_series(0,c-1) AS j, generate_series(0,l-1) AS i
+    FROM generate_series(0,p_j-1) AS j, generate_series(0,p_i-1) AS i
   ) a
   WHERE
     CASE
@@ -1488,26 +1474,9 @@ CREATE or replace FUNCTION osmc.grid_gen(
         THEN ST_Intersects(
           a.geom,
           (
-            SELECT ST_UNION(geom)
-            FROM
-            (
-              SELECT ST_Transform(e.geom,srid) AS geom
-              FROM optim.jurisdiction_eez e
-              WHERE isolabel_ext IN ('CO','CO/JM') AND isolabel IN ('CO','CO/JM')
-
-              UNION
-
-              SELECT ST_Transform(g.geom,srid) AS geom
-              FROM optim.vw01full_jurisdiction_geom g
-              WHERE isolabel_ext = isolabel
-            ) x
-            WHERE
-                (
-                  CASE
-                    WHEN isolabel NOT IN ('CO') THEN geom IS NOT NULL
-                    ELSE TRUE
-                  END
-                )
+            SELECT ST_Transform(geom,p_srid) AS geom
+            FROM optim.mvwjurisdiction_geomeez
+            WHERE isolabel_ext = p_isolabel_ext
           )
         )
       ELSE TRUE
@@ -1517,29 +1486,30 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.grid_gen
   IS 'Generates grids based on the default values for each country.'
 ;
--- SELECT * FROM osmc.grid_gen(6,4,408600,164150,262144,32632,'CM');
-
+-- SELECT * FROM osmc.grid_gen(4,5,408600,164150,262144,32632,'CM');
 /*
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,4,408600,164150,262144,32632,''CM'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,4,408600,164150,262144,32632,''CM'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,4,408600,164150,262144,32632,''CM'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(4,5,408600,164150,262144,32632,''CM'',''{0,1,2,3,10,11,12,20,21,22,23,31,32,33,42}''::int[],''{c,d,e,f,9,a,b,5,6,7,8,2,3,4,1}''::text[],0)','/tmp/grid256.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(4,5,408600,164150,262144,32632,''CM'',''{0,1,2,3,10,11,12,20,21,22,23,31,32,33,42}''::int[],''{c,d,e,f,9,a,b,5,6,7,8,2,3,4,1}''::text[],1)','/tmp/grid256L0.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(4,5,408600,164150,262144,32632,''CM'',''{0,1,2,3,10,11,12,20,21,22,23,31,32,33,42}''::int[],''{c,d,e,f,9,a,b,5,6,7,8,2,3,4,1}''::text[],2)','/tmp/grid256L0coverage.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
 
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',''{40,41,42,43,30,31,32,33,34,21,22,23,11,12,13,2,44,24}''::int[],''{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11}''::text[],0)','/tmp/grid256.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',''{40,41,42,43,30,31,32,33,34,21,22,23,11,12,13,2,44,24}''::int[],''{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11}''::text[],1)','/tmp/grid256L0.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,5,2715000,6727000,1048576,952019,''BR'',''{40,41,42,43,30,31,32,33,34,21,22,23,11,12,13,2,44,24}''::int[],''{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11}''::text[],2)','/tmp/grid256L0coverage.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
 
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,4,353000,6028000,131072,32721,''UY'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,4,353000,6028000,131072,32721,''UY'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,4,353000,6028000,131072,32721,''UY'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(4,5,353000,6028000,131072,32721,''UY'',''{40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3}''::int[],''{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12}''::text[],0)','/tmp/grid256.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(4,5,353000,6028000,131072,32721,''UY'',''{40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3}''::int[],''{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12}''::text[],1)','/tmp/grid256L0.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(4,5,353000,6028000,131072,32721,''UY'',''{40,41,30,31,32,33,20,21,22,23,10,11,12,13,1,2,42,0,3}''::int[],''{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12}''::text[],2)','/tmp/grid256L0coverage.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
 
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,4,3678500,970000,524288,9377,''CO'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,4,3678500,970000,524288,9377,''CO'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(5,4,3678500,970000,524288,9377,''CO'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(4,5,3678500,970000,524288,9377,''CO'',''{2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42}''::int[],''{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}''::text[],0)','/tmp/grid256.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(4,5,3678500,970000,524288,9377,''CO'',''{2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42}''::int[],''{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}''::text[],1)','/tmp/grid256L0.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(4,5,3678500,970000,524288,9377,''CO'',''{2,3,10,11,12,13,20,21,22,23,30,31,32,40,41,42}''::int[],''{8,a,1,3,9,b,4,6,c,e,5,7,d,0,2,f}''::text[],2)','/tmp/grid256L0coverage.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
 
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(7,8,-870000,9401000,524288,32717,''EC'',0)','/tmp/grid256.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(7,8,-870000,9401000,524288,32717,''EC'',1)','/tmp/grid256L0.geojson','t1.geom','ij',NULL,NULL,3,5);
-SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(7,8,-870000,9401000,524288,32717,''EC'',2)','/tmp/grid256L0coverage.geojson','t1.geom','ij',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(8,7,-870000,9401000,524288,32717,''EC'',''{60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6}''::int[],''{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15}''::text[],0)','/tmp/grid256.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(8,7,-870000,9401000,524288,32717,''EC'',''{60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6}''::int[],''{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15}''::text[],1)','/tmp/grid256L0.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
+SELECT write_geojsonb_features('SELECT * FROM osmc.grid_gen(8,7,-870000,9401000,524288,32717,''EC'',''{60,50,51,55,56,40,41,45,46,47,30,31,35,36,37,25,26,27,15,16,5,6}''::int[],''{00,01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15}''::text[],2)','/tmp/grid256L0coverage.geojson','t1.geom','ji,ji_int,code',NULL,NULL,3,5);
 */
+
+
 
 -----------------------------------------------------------------------
 -- New tables and functions, for grids on QGIS and reports
