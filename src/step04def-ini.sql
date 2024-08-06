@@ -96,7 +96,7 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
   (
     SELECT prefix_bits, ST_ContainsProperly(c.geom_transformed,ggeohash.draw_cell_bybox(bbox,false,b.srid)) AS is_contained,
     c.isolabel_ext, prefix, is_overlay,
-    natcod.vbit_to_strstd((order_prefix::int)::bit(5),'32nvu') AS cindex,
+    natcod.vbit_to_strstd(((order_prefix-1)::int)::bit(5),'32nvu') AS cindex,
     ST_Intersection(c.geom_transformed,ggeohash.draw_cell_bybox(bbox,false,b.srid)) AS geom,
     natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(prefix_bits,int_country_id),'32nvu') AS kx_prefix,
     bbox,int_country_id
