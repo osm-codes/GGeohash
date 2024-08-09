@@ -91,54 +91,56 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
 ) RETURNS text AS $f$
   DELETE FROM osmc.coverage WHERE isolabel_ext = p_isolabel_ext;
   INSERT INTO osmc.coverage(cbits,isolabel_ext,cindex,bbox,status,is_country,is_contained,is_overlay,kx_prefix,geom)
-  SELECT int_country_id::bit(8) || prefix_bits,isolabel_ext,cindex,bbox,p_status,FALSE,is_contained,is_overlay,kx_prefix,geom
+  SELECT
+        int_country_id::bit(8) || prefix_bits AS cbits,
+        p_isolabel_ext AS isolabel_ext,
+        natcod.vbit_to_strstd((ROW_NUMBER() OVER (ORDER BY is_overlay ASC, natcod.vBit_to_hBig(int_country_id::bit(8)||prefix_bits) ASC) - 1)::bit(5),'32nvu') AS cindex,
+        bbox AS bbox,
+        p_status AS status,
+        FALSE AS is_country,
+        ST_ContainsProperly(geom_transformed,geom_cell) AS is_contained,
+        is_overlay AS is_overlay,
+        natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(prefix_bits,int_country_id),'32nvu') AS kx_prefix,
+        ST_Intersection(geom_transformed,geom_cell) AS geom
   FROM
   (
-    SELECT prefix_bits, ST_ContainsProperly(c.geom_transformed,ggeohash.draw_cell_bybox(bbox,false,b.srid)) AS is_contained,
-    c.isolabel_ext, prefix, is_overlay,
-    natcod.vbit_to_strstd(((order_prefix-1)::int)::bit(5),'32nvu') AS cindex,
-    ST_Intersection(c.geom_transformed,ggeohash.draw_cell_bybox(bbox,false,b.srid)) AS geom,
-    natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(prefix_bits,int_country_id),'32nvu') AS kx_prefix,
-    bbox,int_country_id
+    SELECT is_overlay, prefix, natcod.baseh_to_vbit(prefix,16) AS prefix_bits
     FROM
     (
-      SELECT is_overlay, prefix,
-            ((('{"CM":32632, "CO":9377, "BR":952019, "UY":32721, "EC":32717}'::jsonb)->(split_part(p_isolabel_ext,'-',1)))::int) AS srid,
-            ROW_NUMBER() OVER (PARTITION BY isolabel_ext ORDER BY length(prefix), prefix ASC) AS order_prefix,
-            natcod.baseh_to_vbit(prefix,16) AS prefix_bits,
-            split_part(p_isolabel_ext,'-',1) AS isocountry
-      FROM
-      (
-        SELECT FALSE AS is_overlay, p_isolabel_ext AS isolabel_ext, unnest(p_cover)   AS prefix
-        UNION
-        SELECT TRUE  AS is_overlay, p_isolabel_ext AS isolabel_ext, unnest(p_overlay) AS prefix
-      ) a
-    ) b
-    -- geom jurisdiction
-    LEFT JOIN LATERAL
-    (
-      SELECT isolabel_ext, int_country_id, ST_Transform(geom,b.srid) AS geom_transformed, geom
-      FROM optim.vw01full_jurisdiction_geom g
-    ) c
-    ON c.isolabel_ext = p_isolabel_ext
+      SELECT FALSE AS is_overlay, unnest(p_cover)   AS prefix
+      UNION
+      SELECT TRUE  AS is_overlay, unnest(p_overlay) AS prefix
+    ) a
+  ) p
 
-    -- bbox prefix
-    LEFT JOIN LATERAL
+  LEFT JOIN LATERAL
+  (
+    SELECT bbox, ggeohash.draw_cell_bybox(bbox,false,srid) AS geom_cell, geom_transformed, int_country_id
+    FROM
     (
-      SELECT (CASE WHEN length(b.prefix)>1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(b.prefix_bits,osmc.extract_jurisdbits(cbits)),bbox) ELSE bbox END) AS bbox
+      SELECT
+        ( CASE WHEN length(p.prefix) > 1 THEN ggeohash.decode_box2(osmc.vbit_withoutL0(p.prefix_bits,osmc.extract_jurisdbits(cbits)),bbox) ELSE bbox END ) AS bbox,
+        ST_SRID(geom) AS srid
       FROM osmc.coverage
-      WHERE isolabel_ext = b.isocountry AND is_country IS TRUE
-          AND (
-                CASE
-                WHEN b.isocountry IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits) # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígitos base16h
-                ELSE                                  ( ( osmc.extract_L0bits(cbits) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
-                END
-          )
-    ) s
-    ON TRUE
+      WHERE isolabel_ext = split_part(p_isolabel_ext,'-',1) AND is_country IS TRUE
+            AND
+            (
+              CASE
+              WHEN split_part(p_isolabel_ext,'-',1) IN ('CO','CM') THEN ( ( osmc.extract_L0bits(cbits) # prefix_bits::bit(4) ) = 0::bit(4) ) -- 1 dígito  base16h
+              ELSE                                                      ( ( osmc.extract_L0bits(cbits) # prefix_bits::bit(8) ) = 0::bit(8) ) -- 2 dígitos base16h
+              END
+            )
+      ) r,
+      LATERAL
+      (
+        SELECT int_country_id, ST_Transform(geom,r.srid) AS geom_transformed
+        FROM optim.vw01full_jurisdiction_geom g
+        WHERE isolabel_ext = p_isolabel_ext
+      ) s
+  ) q
+  ON TRUE
 
-    ORDER BY c.isolabel_ext, order_prefix
-  ) x
+  ORDER BY cindex
 
   RETURNING 'Ok.'
 $f$ LANGUAGE SQL;
