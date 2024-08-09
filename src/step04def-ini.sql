@@ -94,7 +94,7 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
   SELECT
         int_country_id::bit(8) || prefix_bits AS cbits,
         p_isolabel_ext AS isolabel_ext,
-        natcod.vbit_to_strstd((ROW_NUMBER() OVER (ORDER BY is_overlay ASC, natcod.vBit_to_hBig(int_country_id::bit(8)||prefix_bits) ASC) - 1)::bit(5),'32nvu') AS cindex,
+        natcod.vbit_to_strstd((ROW_NUMBER() OVER (ORDER BY is_overlay ASC, natcod.vBit_to_hBig(int_country_id::bit(8)||prefix_bits) ASC) - (CASE WHEN array_position(p_cover, NULL) = 1 THEN 0 ELSE 1 END))::bit(5),'32nvu') AS cindex,
         bbox AS bbox,
         p_status AS status,
         FALSE AS is_country,
@@ -107,7 +107,9 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
     SELECT is_overlay, prefix, natcod.baseh_to_vbit(prefix,16) AS prefix_bits
     FROM
     (
-      SELECT FALSE AS is_overlay, unnest(p_cover)   AS prefix
+      SELECT FALSE AS is_overlay, prefix
+      FROM unnest(p_cover) t(prefix)
+      WHERE prefix IS NOT NULL
       UNION
       SELECT TRUE  AS is_overlay, unnest(p_overlay) AS prefix
     ) a
@@ -147,7 +149,7 @@ $f$ LANGUAGE SQL;
 COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
--- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359q,c35ag,c35bg}'::text[],'{c3581r,c3581v,c3583h,c3583m,c3583r,c3583v,c3589h,c3589m,c3589v,c358ch,c358cr}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{NULL,c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359q,c35ag,c35bg}'::text[],'{c3581r,c3581v,c3583h,c3583m,c3583r,c3583v,c3589h,c3589m,c3589v,c358ch,c358cr}'::text[]);
 
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
   p_isolabel_ext text,
