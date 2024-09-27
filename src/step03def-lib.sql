@@ -672,7 +672,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
       'type', 'FeatureCollection',
       'features',
         (
-          (ST_AsGeoJSONb(ST_Transform_resilient(c.geom,4326,0.005),8,0,null,
+          (ST_AsGeoJSONb(ST_Transform_resilient(c.geom,4326,0.005,0.00000005),8,0,null,
               jsonb_strip_nulls(jsonb_build_object(
                   'code', CASE WHEN p_base IN (18) THEN osmc.encode_16h1c(c.code,p_jurisd_id) ELSE c.code END,
                   'area', ST_Area(c.geom),
@@ -697,7 +697,7 @@ CREATE or replace FUNCTION osmc.osmcode_encode_scientific(
         THEN
           (
             SELECT jsonb_agg(
-                ST_AsGeoJSONb(ST_Transform_resilient((CASE WHEN p_grid_size % 2 = 1 THEN ST_Centroid(geom) ELSE geom END),4326,0.005),8,0,null,
+                ST_AsGeoJSONb(ST_Transform_resilient((CASE WHEN p_grid_size % 2 = 1 THEN ST_Centroid(geom) ELSE geom END),4326,0.005,0.00000005),8,0,null,
                     jsonb_strip_nulls(jsonb_build_object(
                         'code', ghs2,
                         'code_subcell', (CASE WHEN length(code_sci) = length(ghs2) THEN substring(ghs2 FROM length(code_sci)) ELSE substring(ghs2 FROM length(code_sci)+1) END) ,
@@ -916,7 +916,7 @@ CREATE or replace FUNCTION osmc.encode_postal(
     SELECT jsonb_build_object(
       'type', 'FeatureCollection',
       'features',
-          jsonb_agg(ST_AsGeoJSONb(ST_Transform_resilient(c.geom,4326,0.005),8,0,null,
+          jsonb_agg(ST_AsGeoJSONb(ST_Transform_resilient(c.geom,4326,0.005,0.00000005),8,0,null,
               jsonb_strip_nulls(jsonb_build_object(
                   'code', upper(natcod.vbit_to_strstd( osmc.cbits_16h_to_b32nvu(c.codebits,p_jurisd_id),'32nvu')),
                   'short_code', CASE p_type WHEN 2 THEN split_part(isolabel_ext,'-',1) || '-' || jurisd_local_id ELSE isolabel_ext END || '~' || short_code,
