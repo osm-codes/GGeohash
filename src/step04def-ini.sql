@@ -85,7 +85,7 @@ COMMENT ON FUNCTION osmc.L0cover_upsert(text)
 -- DE_PARA COVER
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
   p_isolabel_ext text,
-  p_status       smallint, -- 0: generated, 1: revised, 2: homologated
+  p_status       smallint, -- 0: generated, 1: revised, 2: homologated, 3: official
   p_cover        text[],
   p_overlay      text[] DEFAULT array[]::text[]
 ) RETURNS text AS $f$
@@ -153,7 +153,7 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
 
 CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
   p_isolabel_ext text,
-  p_status       smallint, -- 0: generated, 1: revised, 2: homologated
+  p_status       smallint, -- 0: generated, 1: revised, 2: homologated, 3: official
   p_cover        text[],
   p_overlay      text[] DEFAULT array[]::text[]
 ) RETURNS text AS $f$
@@ -195,15 +195,15 @@ BEGIN
         SELECT isolabel_ext, status,
 
           CASE
-          WHEN '%s' IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),osmc.extract_jurisdbits(cbits))
-          ELSE natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
+          WHEN '%s' IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16,true),osmc.extract_jurisdbits(cbits))
+          ELSE natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16,true)
           END AS prefix
 
         FROM osmc.coverage
         WHERE osmc.extract_jurisdbits(cbits) = ( SELECT int_country_id FROM optim.jurisdiction WHERE isolevel = 1 AND isolabel_ext = '%s' ) -- country cover
               AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS FALSE
-        ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
+        ORDER BY isolabel_ext, natcod.vBit_to_hBig(cbits) ASC
       ) r
       GROUP BY isolabel_ext
       ORDER BY 1
@@ -216,15 +216,15 @@ BEGIN
         SELECT isolabel_ext, status,
 
           CASE
-          WHEN '%s' IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16),osmc.extract_jurisdbits(cbits))
-          ELSE natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
+          WHEN '%s' IN ('BR','UY') THEN osmc.encode_16h1c(natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16,true),osmc.extract_jurisdbits(cbits))
+          ELSE natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16,true)
           END AS prefix
 
         FROM osmc.coverage
         WHERE osmc.extract_jurisdbits(cbits) = ( SELECT int_country_id FROM optim.jurisdiction WHERE isolevel = 1 AND isolabel_ext = '%s' ) -- country cover
               AND is_country IS FALSE -- isolevel3 cover
               AND is_overlay IS TRUE
-        ORDER BY isolabel_ext, natcod.vbit_to_baseh(osmc.extract_cellbits(cbits),16)
+        ORDER BY isolabel_ext, natcod.vBit_to_hBig(cbits) ASC
       ) r
       GROUP BY isolabel_ext
       ORDER BY 1
@@ -242,10 +242,12 @@ $f$ LANGUAGE PLpgSQL;
 COMMENT ON FUNCTION osmc.generate_cover_csv(text,text)
   IS 'Generate csv with isolevel=3 coverage and overlay in separate array.'
 ;
--- SELECT osmc.generate_cover_csv('BR','/tmp/pg_io/coveragebr.csv');
--- SELECT osmc.generate_cover_csv('CO','/tmp/pg_io/coverageco.csv');
--- SELECT osmc.generate_cover_csv('UY','/tmp/pg_io/coverageuy.csv');
--- SELECT osmc.generate_cover_csv('CM','/tmp/pg_io/coveragecm.csv');
+/*
+SELECT osmc.generate_cover_csv('BR','/tmp/pg_io/coveragebr.csv');
+SELECT osmc.generate_cover_csv('CO','/tmp/pg_io/coverageco.csv');
+SELECT osmc.generate_cover_csv('UY','/tmp/pg_io/coverageuy.csv');
+SELECT osmc.generate_cover_csv('CM','/tmp/pg_io/coveragecm.csv');
+*/
 
 CREATE or replace FUNCTION osmc.check_coverage(
   p_isolabel_ext text,
