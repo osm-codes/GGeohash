@@ -107,11 +107,28 @@ CREATE or replace FUNCTION osmc.update_coverage_isolevel3(
     SELECT is_overlay, prefix, natcod.baseh_to_vbit(prefix,16) AS prefix_bits
     FROM
     (
-      SELECT FALSE AS is_overlay, prefix
+
+      SELECT FALSE AS is_overlay,
+        lower(CASE split_part(p_isolabel_ext,'-',1)
+          WHEN 'BR' THEN osmc.decode_16h1c_br(prefix)
+          WHEN 'UY' THEN osmc.decode_16h1c_uy(prefix)
+          ELSE prefix
+        END) AS prefix
       FROM unnest(p_cover) t(prefix)
       WHERE prefix IS NOT NULL
+
       UNION
-      SELECT TRUE  AS is_overlay, unnest(p_overlay) AS prefix
+
+      -- SELECT TRUE  AS is_overlay, unnest(p_overlay) AS prefix
+
+      SELECT TRUE  AS is_overlay,
+        lower(CASE split_part(p_isolabel_ext,'-',1)
+          WHEN 'BR' THEN osmc.decode_16h1c_br(prefix_overlay)
+          WHEN 'UY' THEN osmc.decode_16h1c_uy(prefix_overlay)
+          ELSE prefix_overlay
+        END) AS prefix
+      FROM unnest(p_overlay) s(prefix_overlay)
+
     ) a
   ) p
 
@@ -150,31 +167,7 @@ COMMENT ON FUNCTION osmc.update_coverage_isolevel3(text,smallint,text[],text[])
   IS 'Update coverage isolevel3 in base 16h.'
 ;
 -- SELECT osmc.update_coverage_isolevel3('CO-BOY-Tunja',0::smallint,'{NULL,c347g,c347q,c34dg,c34dq,c352g,c352q,c358g,c358q,c359q,c35ag,c35bg}'::text[],'{c3581r,c3581v,c3583h,c3583m,c3583r,c3583v,c3589h,c3589m,c3589v,c358ch,c358cr}'::text[]);
-
-CREATE or replace FUNCTION osmc.update_coverage_isolevel3_161c(
-  p_isolabel_ext text,
-  p_status       smallint, -- 0: generated, 1: revised, 2: homologated, 3: official
-  p_cover        text[],
-  p_overlay      text[] DEFAULT array[]::text[]
-) RETURNS text AS $f$
-  SELECT osmc.update_coverage_isolevel3(p_isolabel_ext,p_status,
-    ARRAY(
-    SELECT osmc.decode_16h1c(prefix,int_country_id)
-    FROM unnest(p_cover) g(prefix)
-    ),
-    ARRAY(
-    SELECT osmc.decode_16h1c(prefix,int_country_id)
-    FROM unnest(p_overlay) g(prefix)
-    )
-  )
-  FROM optim.jurisdiction
-  WHERE isolabel_ext = upper(split_part(p_isolabel_ext,'-',1)) AND isolevel = 1
-  ;
-$f$ LANGUAGE SQL;
-COMMENT ON FUNCTION osmc.update_coverage_isolevel3_161c(text,smallint,text[],text[])
-  IS 'Update coverage isolevel3 in base 16h1c.'
-;
--- SELECT osmc.update_coverage_isolevel3_161c('BR-PA-Altamira',0::smallint,'{21G,62H,63G,63H,68G,68H,69G,69H,6AG,6AH,6BG,6BH}'::text[],'{211FP,211FS,211FT,211FV,211FZ,2135N,2135Q,211K,211L,211M,213K,214L}'::text[]);
+-- SELECT osmc.update_coverage_isolevel3('BR-PA-Altamira',0::smallint,'{21G,62Q,63G,63Q,68G,68Q,69G,69Q,6aG,6aQ,6bG,6bQ}'::text[],'{211M,211R,211V,211fK,211fS,211fT,211fZ,211fY,213M,2135J,2135N,214R}'::text[]);
 
 CREATE or replace FUNCTION osmc.generate_cover_csv(
   p_isolabel_ext text,
