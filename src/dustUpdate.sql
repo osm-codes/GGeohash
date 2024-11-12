@@ -47,15 +47,12 @@ CREATE VIEW osmc.vw_citycover_dust_cell AS
       ,j.geom AS city_geom
       ,g.isolabel_ext AS receptor_city_isolabel_ext
 
-
     FROM osmc.citycover_dust_raw d
-    INNER JOIN optim.vw01full_jurisdiction_geom j
-    ON d.dust_city=j.jurisd_local_id  AND j.isolevel=3
+    LEFT JOIN optim.vw01full_jurisdiction_geom j
+    ON d.dust_city=j.jurisd_local_id AND d.dust_city_label = j.isolabel_ext AND j.isolevel=3
 
-    INNER JOIN optim.vw01full_jurisdiction_geom g
-    ON d.receptor_city=g.jurisd_local_id  AND g.isolevel=3
-
-
+    LEFT JOIN optim.vw01full_jurisdiction_geom g
+    ON d.receptor_city=g.jurisd_local_id AND split_part(d.dust_city_label,'-',1)  = split_part(g.isolabel_ext,'-',1) AND g.isolevel=3
   ),
   dust3 AS
   (
@@ -91,7 +88,6 @@ CREATE VIEW osmc.vw_citycover_dust_cell AS
  FROM dust3
 ;
 
-
 UPDATE osmc.coverage  -- aglutina a poeira ao receptor:
 SET geom = t.newgeom
 FROM (
@@ -102,4 +98,3 @@ FROM (
 ) t
 WHERE coverage.cbits=t.cbits_receptor_b16h AND coverage.isolabel_ext=t.receptor_city_isolabel_ext
 ;
-
