@@ -90,11 +90,17 @@ CREATE VIEW osmc.vw_citycover_dust_cell AS
 
 UPDATE osmc.coverage  -- aglutina a poeira ao receptor:
 SET geom = t.newgeom
-FROM (
-  SELECT d.receptor_city, d.cbits_receptor_b16h, c.kx_prefix, c.cindex, c.cbits, d.receptor_city_isolabel_ext, ST_Union(c.geom,d.dust_geom) as newgeom
-  FROM osmc.coverage c -- celula receptora
-  INNER JOIN osmc.vw_citycover_dust_cell d
-  ON d.cbits_receptor_b16h=c.cbits AND c.isolabel_ext = d.receptor_city_isolabel_ext
+FROM
+(
+  SELECT receptor_city_isolabel_ext, cbits_receptor_b16h, ST_Union(newgeom) AS newgeom
+  FROM
+  (
+    SELECT d.receptor_city, d.cbits_receptor_b16h, c.kx_prefix, c.cindex, c.cbits, d.receptor_city_isolabel_ext, ST_Union(c.geom,d.dust_geom) as newgeom
+    FROM osmc.coverage c -- celula receptora
+    INNER JOIN osmc.vw_citycover_dust_cell d
+    ON d.cbits_receptor_b16h=c.cbits AND c.isolabel_ext = d.receptor_city_isolabel_ext
+  ) a
+  GROUP BY receptor_city_isolabel_ext, cbits_receptor_b16h
 ) t
 WHERE coverage.cbits=t.cbits_receptor_b16h AND coverage.isolabel_ext=t.receptor_city_isolabel_ext
 ;
