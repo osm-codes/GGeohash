@@ -252,6 +252,17 @@ COMMENT ON COLUMN osmc.coverage.geom_srid4326    IS 'Coverage cell geometry on 4
 
 COMMENT ON TABLE osmc.coverage IS 'Jurisdictional coverage.';
 
+CREATE TABLE osmc.jurisdiction_geom_buffer_clipped (
+  isolabel_ext text PRIMARY KEY,
+  geom geometry(Geometry,4326)
+);
+COMMENT ON COLUMN osmc.jurisdiction_geom_buffer_clipped.isolabel_ext       IS 'ISO 3166-1 alpha-2 code and name (camel case); e.g. BR-SP-SaoPaulo.';
+COMMENT ON COLUMN osmc.jurisdiction_geom_buffer_clipped.geom               IS 'Geometry for osm_id identifier';
+CREATE INDEX osmc_jurisdiction_geom_buffer_clipped_idx1     ON osmc.jurisdiction_geom_buffer_clipped USING gist (geom);
+CREATE INDEX osmc_jurisdiction_geom_buffer_clipped_isolabel_ext_idx1 ON osmc.jurisdiction_geom_buffer_clipped USING btree (isolabel_ext);
+
+COMMENT ON TABLE osmc.jurisdiction_geom_buffer_clipped IS 'OpenStreetMap geometries for optim.jurisdiction.';
+
 CREATE or replace VIEW osmc.jurisdictions_select AS
   SELECT jsonb_object_agg(isolabel_ext,ll) AS gg
   FROM
@@ -885,7 +896,7 @@ CREATE or replace FUNCTION osmc.encode_short_code(
         FROM osmc.coverage r
         WHERE is_country IS FALSE AND (cbits)::bit(12) = p_codebits::bit(12)
         AND CASE WHEN p_isolabel_ext IS NULL THEN TRUE ELSE isolabel_ext = p_isolabel_ext END
-        AND CASE WHEN is_contained IS FALSE THEN ST_Contains(geom,p_geom) ELSE TRUE END
+        --AND CASE WHEN is_contained IS FALSE THEN ST_Contains(geom,p_geom) ELSE TRUE END
         AND cbits # substring(p_codebits FROM 1 FOR length(cbits)) = substring(0::bit(40) FROM 1 FOR length(cbits))
         ORDER BY length(kx_prefix) DESC
         LIMIT 1

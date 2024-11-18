@@ -36,7 +36,7 @@ BEGIN
     RAISE NOTICE '4. Testando hBig <-> AFAcodes:';
     ASSERT (SELECT osmc.hBig_to_afa_sci(37996971798872115))      = 'BR+dfc16cd39S',        '4.1. hBig -> sci';
     ASSERT (SELECT osmc.afa_sci_to_hBig('BR+dfc16cd39s'))        = '37996971798872115',    '4.2. sci -> hBig';
-    ASSERT (SELECT osmc.hBig_to_afa_log(37996971798872115))      = 'BR-SP-SaoPaulo~LDUGD', '4.3. hBig -> log';
-    ASSERT (SELECT osmc.afa_log_to_hBig('BR-SP-SaoPaulo~LDUGD')) = '37996971798872115',    '4.4. log -> hBig';
+    ASSERT (SELECT osmc.hBig_to_afa_log(37996971798872115))      = 'BR-SP-SaoPaulo~3CDUGD', '4.3. hBig -> log';
+    ASSERT (SELECT osmc.afa_log_to_hBig('BR-SP-SaoPaulo~3CDUGD')) = '37996971798872115',    '4.4. log -> hBig';
 END;
 $tests$ LANGUAGE plpgsql;
