@@ -524,7 +524,7 @@ CREATE or replace FUNCTION osmc.extract_L0bits(
   SELECT
     CASE
     WHEN jurisd_id IN (1,4,5) THEN osmc.extract_L0bits8(p_x)
-    WHEN jurisd_id IN (2,3)   THEN osmc.extract_L0bits4(p_x)
+    WHEN jurisd_id IN (2,3,6)   THEN osmc.extract_L0bits4(p_x)
     END
   FROM osmc.extract_jurisdbits(p_x) jurisd_id
     ;
@@ -540,7 +540,7 @@ CREATE or replace FUNCTION osmc.vbit_withoutL0(
   SELECT
     CASE
     WHEN p_iso IN (1,4,5) THEN substring(p_x from 9) -- Remove 8 bits MSb
-    WHEN p_iso IN (2,3)   THEN substring(p_x from 5) -- Remove 4 bits MSb
+    WHEN p_iso IN (2,3,6) THEN substring(p_x from 5) -- Remove 4 bits MSb
     END
     ;
 $wrap$ LANGUAGE SQL IMMUTABLE;
@@ -880,6 +880,34 @@ $f$ LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION osmc.encode_scientific_ec(geometry(POINT),float,int)
   IS 'Encodes geometry to EC Scientific OSMcode.'
 ;
+
+CREATE or replace FUNCTION osmc.encode_scientific_sv(
+  p_geom        geometry(POINT),
+  p_uncertainty float  DEFAULT -1,
+  p_grid_size   int    DEFAULT 0
+) RETURNS jsonb AS $f$
+    SELECT osmc.osmcode_encode_scientific(x,y,16,
+      CASE
+      WHEN p_uncertainty > -1 AND u >  8 THEN u-8
+      WHEN p_uncertainty > -1 AND u <= 8 THEN 0
+      ELSE 40
+      END,
+      5399,
+      CASE
+        WHEN u > 31 THEN 0
+        WHEN p_grid_size > 0 AND u = 31 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 3 ELSE 2 END))
+        WHEN p_grid_size > 0 AND u = 30 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 5 ELSE 4 END))
+        WHEN p_grid_size > 0 AND u = 29 THEN least(p_grid_size,(CASE WHEN p_grid_size % 2 = 1 THEN 9 ELSE 8 END))
+        ELSE p_grid_size
+      END
+      ,bbox,osmc.extract_L0bits4(cbits),6,222,FALSE)
+    FROM osmc.coverage u, (SELECT osmc.uncertain_base16h(p_uncertainty), ST_X(p_geom), ST_Y(p_geom)) t(u,x,y)
+    WHERE is_country IS TRUE AND osmc.extract_jurisdbits(cbits) = 6 AND x BETWEEN bbox[1] AND bbox[3] AND y BETWEEN bbox[2] AND bbox[4]
+$f$ LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION osmc.encode_scientific_cm(geometry(POINT),float,int)
+  IS 'Encodes geometry to CM Scientific OSMcode.'
+;
+-- SELECT osmc.encode_scientific_sv (ST_SetSRID(ST_MakePoint(-90.22350,13.13846),4326), 100, 0);
 
 -- encode logistics:
 
